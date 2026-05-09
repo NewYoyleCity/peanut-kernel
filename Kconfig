@@ -1,0 +1,359 @@
+mainmenu "Peanut Kernel Configuration"
+
+menu "General Setup"
+
+config KERNEL_NAME
+    string "Kernel name"
+    default "Peanut Kernel"
+
+config KERNEL_VERSION
+    string "Kernel version"
+    default "0.0.1-alpha"
+
+config INIT_PATH
+    string "Default init path"
+    default "/sbin/init"
+
+menu "Advanced Features (for experts only)"
+    config ADV_WRITE_TEST
+        bool "Enable filesystem write test (destructive if misconfigured)"
+        default n
+endmenu
+
+endmenu
+
+menu "Memory Management"
+
+config VM
+    bool "Virtual memory manager"
+    default y
+
+config SLAB_ALLOCATOR
+    bool "Slab allocator for small kernel objects"
+    default y
+
+config KASLR
+    bool "Kernel Address Space Layout Randomization"
+    default y
+    help
+      Randomizes the base address where the kernel is loaded at boot.
+      This improves security by making kernel exploits harder.
+
+endmenu
+
+
+menu "Scheduler"
+
+choice
+    prompt "Scheduler policy"
+    default SCHED_RR
+
+config SCHED_RR
+    bool "Round-robin"
+
+config SCHED_CFS
+    bool "CFS-style virtual runtime"
+
+endchoice
+
+config SCHED_MAX_PROCS
+    int "Maximum processes"
+    default 2000
+    range 2 2763
+
+endmenu
+
+
+menu "Boot Support"
+
+config BOOT_UEFI
+    bool "UEFI boot support helper"
+    default n
+
+config INITRAMFS_EMBED
+    bool "Embedded initramfs support"
+    default n
+
+endmenu
+
+
+menu "Device Drivers"
+
+menu "CD-ROM drivers"
+
+config STORAGE_CDROM
+    bool "CD-ROM driver support"
+    default n
+    help
+      Enable basic CD-ROM driver support for reading ISO9660 filesystems.
+
+config STORAGE_CDROM_IDE
+    bool "IDE CD-ROM support"
+    depends on STORAGE_CDROM
+    default n
+    help
+      Support for CD-ROM drives connected via IDE interface.
+
+endmenu
+
+menu "Floppy drivers"
+
+config STORAGE_FLOPPY
+    bool "Floppy disk driver support"
+    default n
+    help
+      Enable basic floppy disk driver support.
+
+config STORAGE_FLOPPY_144
+    bool "1.44MB 3.5-inch floppy support"
+    depends on STORAGE_FLOPPY
+    default n
+    help
+      Support for standard 1.44MB 3.5-inch floppy disks.
+
+endmenu
+
+menu "Network drivers"
+
+config NET_TCP_IP
+    bool "TCP/IP networking stack"
+    default y
+    help
+      Enable basic TCP/IP networking support including IPv4, TCP, and UDP.
+
+config NET_E1000
+    bool "Intel E1000 network driver"
+    depends on NET_TCP_IP
+    default y
+    help
+      Driver for Intel E1000/E1000e network cards.
+
+config NET_RTL8139
+    bool "Realtek RTL8139 network driver"
+    depends on NET_TCP_IP
+    default y
+    help
+      Driver for Realtek RTL8139 network cards.
+
+config NET_RTL8169
+    bool "Realtek RTL8169/RTL8168/RTL8125 network discovery"
+    depends on NET_TCP_IP
+    default y
+    help
+      Detects common Realtek PCIe Ethernet cards. Packet I/O still needs
+      the descriptor engine implementation.
+
+config NET_VIRTIO
+    bool "Virtio network discovery"
+    depends on NET_TCP_IP
+    default y
+    help
+      Detects QEMU/KVM virtio-net devices. Virtqueue packet I/O still needs
+      the transport implementation.
+
+endmenu
+
+menu "Audio drivers"
+
+config AUDIO_AC97
+    bool "Intel AC97 audio controller"
+    default y
+    help
+      Initialize common PCI AC97 controllers, including QEMU's AC97 device.
+
+config AUDIO_HDA
+    bool "Intel High Definition Audio controller"
+    default y
+    help
+      Initialize PCI HDA controllers and their command/response rings.
+
+endmenu
+
+menu "ATA/Storage drivers"
+
+config STORAGE_IDE
+    bool "IDE/ATA PIO driver"
+    default y
+
+config STORAGE_AHCI
+    bool "AHCI SATA driver"
+    default y
+
+config STORAGE_TESTS
+    bool "Run storage self-tests at boot"
+    default y
+
+endmenu
+
+
+menu "USB drivers"
+
+config USB_XHCI
+    bool "xHCI USB host controller"
+    default y
+
+endmenu
+
+menu "Input drivers"
+
+config INPUT_PS2
+    bool "PS/2 keyboard and mouse"
+    default y
+
+endmenu
+
+menu "Video drivers"
+
+config VIDEO_HDMI
+    bool "PCI HDMI/display discovery"
+    default y
+
+endmenu
+
+
+menu "Graphics drivers"
+
+config VGA_TEXT
+    bool "VGA text mode driver"
+    default y
+
+config VGA_COLOR
+    hex "Default VGA text color"
+    range 0x00 0xFF
+    default 0x0F
+    depends on VGA_TEXT
+
+endmenu
+
+endmenu
+
+
+menu "Filesystems"
+
+menu "FAT12"
+
+config FS_FAT12_READ
+    bool "Read support"
+    default y
+    depends on STORAGE_IDE || STORAGE_AHCI
+
+config FS_FAT12_WRITE
+    bool "Write support"
+    default y
+    depends on FS_FAT12_READ
+
+endmenu
+
+menu "FAT16"
+
+config FS_FAT16_READ
+    bool "Read support"
+    default y
+    depends on STORAGE_IDE || STORAGE_AHCI
+
+config FS_FAT16_WRITE
+    bool "Write support"
+    default y
+    depends on FS_FAT16_READ
+
+endmenu
+
+menu "FAT32"
+
+config FS_FAT32_READ
+    bool "Read support"
+    default y
+    depends on STORAGE_IDE || STORAGE_AHCI
+
+config FS_FAT32_WRITE
+    bool "Write support"
+    default y
+    depends on FS_FAT32_READ
+
+endmenu
+
+menu "exFAT"
+
+config FS_EXFAT_READ
+    bool "Read support"
+    default y
+    depends on STORAGE_IDE || STORAGE_AHCI
+
+config FS_EXFAT_WRITE
+    bool "Write support"
+    default y
+    depends on FS_EXFAT_READ
+
+endmenu
+
+menu "ext2"
+
+config FS_EXT2_READ
+    bool "Read support"
+    default n
+    depends on STORAGE_IDE || STORAGE_AHCI
+
+config FS_EXT2_WRITE
+    bool "Write support"
+    default n
+    depends on FS_EXT2_READ
+
+endmenu
+
+menu "ext3"
+
+config FS_EXT3_READ
+    bool "Read support"
+    default n
+    depends on STORAGE_IDE || STORAGE_AHCI
+
+config FS_EXT3_WRITE
+    bool "Write support"
+    default n
+    depends on FS_EXT3_READ
+
+endmenu
+
+menu "ext4"
+
+config FS_EXT4_READ
+    bool "Read support"
+    default y
+    depends on STORAGE_IDE || STORAGE_AHCI
+
+config FS_EXT4_WRITE
+    bool "Write support"
+    default y
+    depends on FS_EXT4_READ
+
+endmenu
+
+endmenu
+
+
+menu "Networking"
+
+config NETWORK_SYSCALLS
+    bool "Network syscall support"
+    depends on NET_TCP_IP
+    default y
+    help
+      Enable syscalls for socket operations (socket, bind, listen, accept, connect, send, recv, etc.)
+
+config DNS_RESOLVER
+    bool "DNS resolver"
+    depends on NETWORK_SYSCALLS
+    default y
+    help
+      Enable DNS resolution for hostname lookups.
+
+endmenu
+
+
+menu "Userspace Support"
+
+config ELF_LOADER
+    bool "ELF64 executable loader"
+    default y
+
+endmenu
