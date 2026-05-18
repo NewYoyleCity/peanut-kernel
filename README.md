@@ -2,7 +2,7 @@
 
 Peanut Kernel is a small x86-64 hobby kernel with a Multiboot2 boot path, a
 minimal userspace ABI, block-device discovery, filesystem loading, and a sample
-ring-3 init program.
+ring-3 init program. Created in May 5th by Arthur Greghi, licensed under the GPL v3.
 
 ## What It Builds
 
