@@ -12,7 +12,7 @@ We appreciate your interest in contributing to our magnificent pile of questiona
 
   ## 2. Always Base Your Work on the Latest `main` Commit
 
-  Before creating new commits, make sure your branch is up to date with the latest commit from the `main` branch. This helps reduce conflicts and keeps      development consistent.
+  Before creating new commits, make sure your branch is up to date with the latest commit from the **`main`** (triple check it is main!) branch. This helps reduce conflicts and keeps      development consistent.
 
   ## 3. Never Commit Directly to `main`
 
@@ -38,5 +38,3 @@ We appreciate your interest in contributing to our magnificent pile of questiona
     4. Git
     5. libncurses-dev 
     6. Kconfig-mconf & Kconfig-conf (in /usr/bin)
----
-    
