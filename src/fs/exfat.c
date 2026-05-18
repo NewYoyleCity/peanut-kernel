@@ -222,33 +222,41 @@ int exfat_find_root(ExfatVolume* volume, const char* path, ExfatDirEntry* out) {
     if (!volume || !path || !out)
         return -1;
 
-    const char* slash = 0;
-    for (int i = 0; path[i]; i++) {
-        if (path[i] == '/' || path[i] == '\\') {
-            slash = path + i;
-            break;
+    const char* p = path;
+    uint32_t dir_cluster = volume->root_cluster;
+    ExfatDirEntry current;
+
+    while (*p == '/' || *p == '\\')
+        p++;
+
+    while (*p) {
+        char component[EXFAT_MAX_NAME];
+        uint32_t len = 0;
+
+        while (p[len] && p[len] != '/' && p[len] != '\\') {
+            if (len + 1 >= sizeof(component))
+                return -1;
+            component[len] = p[len];
+            len++;
         }
+        component[len] = '\0';
+        while (p[len] == '/' || p[len] == '\\')
+            len++;
+
+        if (find_in_cluster_chain(volume, dir_cluster, component, &current) != 0)
+            return -1;
+
+        p += len;
+        if (!*p) {
+            *out = current;
+            return 0;
+        }
+        if ((current.attributes & EXFAT_ATTR_DIRECTORY) == 0)
+            return -1;
+        dir_cluster = current.first_cluster;
     }
 
-    if (slash) {
-        char dirname[32];
-        uint32_t dlen = (uint32_t)(slash - path);
-        if (dlen >= sizeof(dirname))
-            return -1;
-        for (uint32_t i = 0; i < dlen; i++)
-            dirname[i] = path[i];
-        dirname[dlen] = '\0';
-        const char* filename = slash + 1;
-
-        ExfatDirEntry dir_ent;
-        if (find_in_cluster_chain(volume, volume->root_cluster, dirname, &dir_ent) != 0)
-            return -1;
-        if ((dir_ent.attributes & EXFAT_ATTR_DIRECTORY) == 0)
-            return -1;
-        return find_in_cluster_chain(volume, dir_ent.first_cluster, filename, out);
-    }
-
-    return find_in_cluster_chain(volume, volume->root_cluster, path, out);
+    return -1;
 }
 
 int exfat_read_file(ExfatVolume* volume, const char* name, void* buffer, uint32_t buffer_size, uint32_t* bytes_read) {

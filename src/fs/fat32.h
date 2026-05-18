@@ -3,7 +3,7 @@
 
 #include "fs/partition.h"
 
-#define FAT32_MAX_NAME 13
+#define FAT32_MAX_NAME 64
 #define FAT32_ATTR_DIRECTORY 0x10
 #define PEANUT_FAT12 12
 #define PEANUT_FAT16 16

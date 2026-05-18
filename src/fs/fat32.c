@@ -26,6 +26,29 @@ static int streq(const char* a, const char* b) {
     return a[i] == b[i];
 }
 
+static char upper_ascii(char c) {
+    return (c >= 'a' && c <= 'z') ? (char)(c - 32) : c;
+}
+
+static int streq_ci(const char* a, const char* b) {
+    uint32_t i = 0;
+    while (a[i] && b[i]) {
+        if (upper_ascii(a[i]) != upper_ascii(b[i])) return 0;
+        i++;
+    }
+    return a[i] == b[i];
+}
+
+static void copy_name(char* dst, const char* src, uint32_t cap) {
+    uint32_t i = 0;
+    if (cap == 0) return;
+    while (i + 1 < cap && src[i]) {
+        dst[i] = src[i];
+        i++;
+    }
+    dst[i] = '\0';
+}
+
 static uint32_t cluster_lba(Fat32Volume* volume, uint32_t cluster) {
     return volume->data_start_lba +
         (cluster - 2) * volume->sectors_per_cluster;
@@ -118,6 +141,34 @@ static int parse_entry(const uint8_t* raw, Fat32DirEntry* out) {
     return 1;
 }
 
+static void clear_lfn(char* lfn) {
+    lfn[0] = '\0';
+}
+
+static void parse_lfn_entry(const uint8_t* raw, char* lfn, uint32_t lfn_size) {
+    static const uint8_t offsets[13] = {
+        1, 3, 5, 7, 9,
+        14, 16, 18, 20, 22, 24,
+        28, 30
+    };
+    uint8_t seq = raw[0] & 0x1F;
+    uint32_t base;
+
+    if (lfn_size == 0 || seq == 0) return;
+    if (raw[0] & 0x40) clear_lfn(lfn);
+
+    base = (uint32_t)(seq - 1u) * 13u;
+    for (uint32_t i = 0; i < 13 && base + i + 1 < lfn_size; i++) {
+        uint16_t ch = le16(raw + offsets[i]);
+        if (ch == 0x0000 || ch == 0xFFFF) {
+            lfn[base + i] = '\0';
+            return;
+        }
+        lfn[base + i] = ch < 128 ? (char)ch : '?';
+        lfn[base + i + 1] = '\0';
+    }
+}
+
 int fat32_mount(Fat32Volume* volume, const Partition* partition) {
     uint8_t sector[BLOCK_SECTOR_SIZE];
 
@@ -187,14 +238,27 @@ uint32_t fat32_list_root(Fat32Volume* volume, Fat32DirEntry* entries, uint32_t m
 
     if (volume->fat_type != PEANUT_FAT32) {
         uint8_t sector[BLOCK_SECTOR_SIZE];
+        char lfn[FAT32_MAX_NAME];
+        clear_lfn(lfn);
         for (uint32_t s = 0; s < volume->root_dir_sectors && count < max_entries; s++) {
             if (block_read(volume->partition.disk, volume->root_dir_lba + s, 1, sector) != 0)
                 break;
             for (uint32_t off = 0; off < BLOCK_SECTOR_SIZE && count < max_entries; off += 32) {
                 Fat32DirEntry parsed;
+                if ((sector[off + 11] & FAT32_ATTR_LONG_NAME) == FAT32_ATTR_LONG_NAME) {
+                    parse_lfn_entry(sector + off, lfn, sizeof(lfn));
+                    continue;
+                }
                 int result = parse_entry(sector + off, &parsed);
                 if (result == 0) return count;
-                if (result < 0) continue;
+                if (result < 0) {
+                    clear_lfn(lfn);
+                    continue;
+                }
+                if (lfn[0]) {
+                    copy_name(parsed.name, lfn, sizeof(parsed.name));
+                    clear_lfn(lfn);
+                }
                 entries[count++] = parsed;
             }
         }
@@ -202,14 +266,27 @@ uint32_t fat32_list_root(Fat32Volume* volume, Fat32DirEntry* entries, uint32_t m
     }
 
     while (cluster < FAT32_EOC && count < max_entries) {
+        char lfn[FAT32_MAX_NAME];
+        clear_lfn(lfn);
         if (read_cluster(volume, cluster, cluster_buffer) != 0) break;
 
         uint32_t bytes = volume->sectors_per_cluster * BLOCK_SECTOR_SIZE;
         for (uint32_t off = 0; off < bytes && count < max_entries; off += 32) {
             Fat32DirEntry parsed;
+            if ((cluster_buffer[off + 11] & FAT32_ATTR_LONG_NAME) == FAT32_ATTR_LONG_NAME) {
+                parse_lfn_entry(cluster_buffer + off, lfn, sizeof(lfn));
+                continue;
+            }
             int result = parse_entry(cluster_buffer + off, &parsed);
             if (result == 0) return count;
-            if (result < 0) continue;
+            if (result < 0) {
+                clear_lfn(lfn);
+                continue;
+            }
+            if (lfn[0]) {
+                copy_name(parsed.name, lfn, sizeof(parsed.name));
+                clear_lfn(lfn);
+            }
             entries[count++] = parsed;
         }
 
@@ -226,7 +303,7 @@ int fat32_find_dir_in_root(Fat32Volume* volume, const char* dirname, Fat32DirEnt
     if (!volume || !dirname || !out) return -1;
 
     for (uint32_t i = 0; i < entry_count; i++) {
-        if ((entries[i].attributes & FAT32_ATTR_DIRECTORY) && streq(entries[i].name, dirname)) {
+        if ((entries[i].attributes & FAT32_ATTR_DIRECTORY) && streq_ci(entries[i].name, dirname)) {
             *out = entries[i];
             return 0;
         }
@@ -241,14 +318,27 @@ static uint32_t list_cluster_entries(Fat32Volume* volume, uint32_t cluster, Fat3
     if (volume->sectors_per_cluster > 8) return 0;
 
     while (cluster < FAT32_EOC && count < max_entries) {
+        char lfn[FAT32_MAX_NAME];
+        clear_lfn(lfn);
         if (read_cluster(volume, cluster, cluster_buffer) != 0) break;
 
         uint32_t bytes = volume->sectors_per_cluster * BLOCK_SECTOR_SIZE;
         for (uint32_t off = 0; off < bytes && count < max_entries; off += 32) {
             Fat32DirEntry parsed;
+            if ((cluster_buffer[off + 11] & FAT32_ATTR_LONG_NAME) == FAT32_ATTR_LONG_NAME) {
+                parse_lfn_entry(cluster_buffer + off, lfn, sizeof(lfn));
+                continue;
+            }
             int result = parse_entry(cluster_buffer + off, &parsed);
             if (result == 0) return count;
-            if (result < 0) continue;
+            if (result < 0) {
+                clear_lfn(lfn);
+                continue;
+            }
+            if (lfn[0]) {
+                copy_name(parsed.name, lfn, sizeof(parsed.name));
+                clear_lfn(lfn);
+            }
             entries[count++] = parsed;
         }
         cluster = next_cluster(volume, cluster);
@@ -261,7 +351,7 @@ int fat32_find_in_dir(Fat32Volume* volume, uint32_t dir_cluster, const char* nam
     uint32_t entry_count = list_cluster_entries(volume, dir_cluster, entries, 64);
 
     for (uint32_t i = 0; i < entry_count; i++) {
-        if (streq(entries[i].name, name)) {
+        if (streq_ci(entries[i].name, name)) {
             *out = entries[i];
             return 0;
         }
@@ -272,41 +362,50 @@ int fat32_find_in_dir(Fat32Volume* volume, uint32_t dir_cluster, const char* nam
 int fat32_find_root(Fat32Volume* volume, const char* path, Fat32DirEntry* out) {
     if (!volume || !path || !out) return -1;
 
-    const char* slash = 0;
-    for (int i = 0; path[i]; i++) {
-        if (path[i] == '/' || path[i] == '\\') {
-            slash = path + i;
-            break;
-        }
-    }
+    const char* p = path;
+    uint32_t dir_cluster = volume->root_cluster;
+    int in_root = 1;
+    Fat32DirEntry current;
 
-    if (slash) {
-        char dirname[16];
-        uint32_t dlen = slash - path;
-        if (dlen >= sizeof(dirname)) return -1;
-        
-        for (uint32_t i = 0; i < dlen; i++) {
-            dirname[i] = path[i];
-        }
-        dirname[dlen] = '\0';
-        
-        const char* filename = slash + 1;
-        
-        Fat32DirEntry dir_entry;
-        if (fat32_find_dir_in_root(volume, dirname, &dir_entry) != 0) return -1;
-        
-        return fat32_find_in_dir(volume, dir_entry.first_cluster, filename, out);
-    }
-    
-    Fat32DirEntry entries[64];
-    uint32_t entry_count = fat32_list_root(volume, entries, 64);
+    while (*p == '/' || *p == '\\') p++;
+    while (*p) {
+        char component[FAT32_MAX_NAME];
+        uint32_t len = 0;
 
-    for (uint32_t i = 0; i < entry_count; i++) {
-        if (streq(entries[i].name, path)) {
-            *out = entries[i];
+        while (p[len] && p[len] != '/' && p[len] != '\\') {
+            if (len + 1 >= sizeof(component)) return -1;
+            component[len] = p[len];
+            len++;
+        }
+        component[len] = '\0';
+        while (p[len] == '/' || p[len] == '\\') len++;
+
+        if (in_root) {
+            Fat32DirEntry entries[64];
+            uint32_t entry_count = fat32_list_root(volume, entries, 64);
+            int found = 0;
+            for (uint32_t i = 0; i < entry_count; i++) {
+                if (streq_ci(entries[i].name, component)) {
+                    current = entries[i];
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) return -1;
+        } else if (fat32_find_in_dir(volume, dir_cluster, component, &current) != 0) {
+            return -1;
+        }
+
+        p += len;
+        if (!*p) {
+            *out = current;
             return 0;
         }
+        if ((current.attributes & FAT32_ATTR_DIRECTORY) == 0) return -1;
+        dir_cluster = current.first_cluster;
+        in_root = 0;
     }
+
     return -1;
 }
 
