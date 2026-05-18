@@ -38,3 +38,9 @@ We appreciate your interest in contributing to our magnificent pile of questiona
     4. Git
     5. libncurses-dev 
     6. Kconfig-mconf & Kconfig-conf (in /usr/bin)
+    7. QEMU
+    8. S=sfdisk
+    9. dd
+    10. mtools
+    11. exfatprogs
+    12. e2fsprogs
