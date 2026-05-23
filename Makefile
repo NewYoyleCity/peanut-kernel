@@ -148,8 +148,8 @@ INIT_SRC = src/programs/init_sample.c
 INIT_ELF = build/programs/init.elf
 
 
-all: check_flex check_config build/kernel.elf
-	@printf "\n  Build complete — build/kernel.elf\n"
+all: check_flex check_config build/kernel.elf build/kernel.final.elf
+	@printf "\n  Build complete — build/kernel.elf and build/kernel.final.elf\n"
 
 compress: check_config build/kernel.elf build/kernel.final.elf
 
@@ -227,10 +227,10 @@ $(INIT_ELF): $(INIT_SRC)
 	@$(CC) -m64 -static -nostdlib -e _start -Ttext 0x400000 $< -o $@
 
 
-.PHONY: all check_flex check_config help menuconfig xconfig defconfig tinyconfig allnoconfig allyesconfig allmodconfig uefi-bundle iso isos making run run-debug run-test tags size clean distclean install
+.PHONY: all check_flex check_config help menuconfig xconfig defconfig tinyconfig allnoconfig allyesconfig allmodconfig uefi-bundle iso iso-compress isos making run run-debug run-test run-compress run-ahci tags size check count objdump clean distclean install
 help:
 	@printf "Peanut kernel make targets:\n"
-	@printf "  make all              Build the kernel (build/kernel.elf)\n"
+	@printf "  make all              Build both uncompressed + compressed kernels\n"
 	@printf "  make compress         Build compressed self-decompressing kernel\n"
 	@printf "  make menuconfig       Launch Kconfig menuconfig\n"
 	@printf "  make xconfig          Launch Kconfig Qt config\n"
@@ -253,8 +253,14 @@ help:
 	@printf "  make run-uefi         Run qemu with UEFI firmware\n"
 	@printf "  make run-debug        Run qemu with GDB stub (-s -S)\n"
 	@printf "  make run-test         Run qemu with auto-exit (for CI)\n"
+	@printf "  make run-compress     Run compressed kernel in qemu\n"
+	@printf "  make run-ahci         Run qemu with AHCI + serial\n"
+	@printf "  make iso-compress     Build ISO from compressed kernel\n"
 	@printf "  make tags             Generate ctags for symbol navigation\n"
 	@printf "  make size             Show kernel binary section sizes\n"
+	@printf "  make check            GCC syntax-check all sources (-fsyntax-only)\n"
+	@printf "  make count            Count lines of code (cloc.sh)\n"
+	@printf "  make objdump          Disassemble kernel to build/kernel.asm\n"
 	@printf "  make nvme-disk.img    Create empty 64M NVMe disk image\n"
 	@printf "  make install          Install kernel to /boot/peanut.elf\n"
 	@printf "  make clean            Remove build artifacts + .config + disk images\n"
@@ -310,6 +316,18 @@ iso: build/kernel.elf
 	@echo '    boot' >> build/isofiles/boot/grub/grub.cfg
 	@echo '}' >> build/isofiles/boot/grub/grub.cfg
 	@grub-mkrescue -o build/peanut.iso build/isofiles
+
+iso-compress: build/kernel.final.elf
+	@mkdir -p build/isofiles/boot/grub
+	@cp build/kernel.final.elf build/isofiles/boot/kernel.elf
+	@echo 'set timeout=0' > build/isofiles/boot/grub/grub.cfg
+	@echo 'set default=0' >> build/isofiles/boot/grub/grub.cfg
+	@echo 'menuentry "Peanut OS (compressed)" {' >> build/isofiles/boot/grub/grub.cfg
+	@echo '    multiboot2 /boot/kernel.elf' >> build/isofiles/boot/grub/grub.cfg
+	@echo '    boot' >> build/isofiles/boot/grub/grub.cfg
+	@echo '}' >> build/isofiles/boot/grub/grub.cfg
+	@grub-mkrescue -o build/peanut-compress.iso build/isofiles
+	@printf "Compressed ISO: build/peanut-compress.iso\n"
 
 install: build/kernel.elf
 	@echo "Installing Peanut kernel..."
@@ -417,6 +435,36 @@ size: build/kernel.elf
 	@size build/kernel.elf
 	@printf "\n  SECTION BREAKDOWN:\n"
 	@objdump -h build/kernel.elf | grep -E '\.(text|data|bss|rodata)'
+
+run-compress: iso-compress disk.img
+	qemu-system-x86_64 -boot d -cdrom build/peanut-compress.iso \
+	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
+	-device qemu-xhci \
+	-device usb-kbd \
+	-device usb-mouse \
+	-serial stdio
+
+run-ahci: iso disk.img
+	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
+	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
+	-device ahci,id=ahci \
+	-device qemu-xhci \
+	-device usb-kbd \
+	-device usb-mouse \
+	-serial stdio
+
+check:
+	@printf "  CHECK   Syntax-checking all sources\n"
+	@$(CC) $(CFLAGS) -fsyntax-only $(SRCS_C) $(SRCS_CPP)
+	@printf "  No syntax errors\n"
+
+count:
+	@tools/cloc.sh --all
+
+objdump: build/kernel.elf
+	@printf "  OBJDUMP build/kernel.asm\n"
+	@objdump -d build/kernel.elf > build/kernel.asm
+	@wc -l build/kernel.asm
 
 nvme-disk.img:
 	@printf "  DISK     Generating NVMe disk image\n"

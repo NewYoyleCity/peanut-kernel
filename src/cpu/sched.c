@@ -28,9 +28,77 @@
 #define PROC_RUNNABLE 1
 #define PROC_ZOMBIE 2
 
-#define SIGKILL 9
-#define SIGSEGV 11
-#define SIGINT  2
+#define SIGHUP    1
+#define SIGINT    2
+#define SIGQUIT   3
+#define SIGILL    4
+#define SIGTRAP   5
+#define SIGABRT   6
+#define SIGBUS    7
+#define SIGFPE    8
+#define SIGKILL   9
+#define SIGUSR1  10
+#define SIGSEGV  11
+#define SIGUSR2  12
+#define SIGPIPE  13
+#define SIGALRM  14
+#define SIGTERM  15
+#define SIGSTKFLT 16
+#define SIGCHLD  17
+#define SIGCONT  18
+#define SIGSTOP  19
+#define SIGTSTP  20
+#define SIGTTIN  21
+#define SIGTTOU  22
+#define SIGURG   23
+#define SIGXCPU  24
+#define SIGXFSZ  25
+#define SIGVTALRM 26
+#define SIGPROF  27
+#define SIGWINCH 28
+#define SIGIO    29
+#define SIGPWR   30
+#define SIGSYS   31
+
+#define SIGACT_TERM  0
+#define SIGACT_CORE  1
+#define SIGACT_IGN   2
+#define SIGACT_STOP  3
+#define SIGACT_CONT  4
+
+static const uint8_t sig_default[SIGSYS + 1] = {
+    [SIGHUP]   = SIGACT_TERM,
+    [SIGINT]   = SIGACT_TERM,
+    [SIGQUIT]  = SIGACT_CORE,
+    [SIGILL]   = SIGACT_CORE,
+    [SIGTRAP]  = SIGACT_CORE,
+    [SIGABRT]  = SIGACT_CORE,
+    [SIGBUS]   = SIGACT_CORE,
+    [SIGFPE]   = SIGACT_CORE,
+    [SIGKILL]  = SIGACT_TERM,
+    [SIGUSR1]  = SIGACT_TERM,
+    [SIGSEGV]  = SIGACT_CORE,
+    [SIGUSR2]  = SIGACT_TERM,
+    [SIGPIPE]  = SIGACT_TERM,
+    [SIGALRM]  = SIGACT_IGN,
+    [SIGTERM]  = SIGACT_TERM,
+    [SIGSTKFLT]= SIGACT_TERM,
+    [SIGCHLD]  = SIGACT_IGN,
+    [SIGCONT]  = SIGACT_CONT,
+    [SIGSTOP]  = SIGACT_STOP,
+    [SIGTSTP]  = SIGACT_STOP,
+    [SIGTTIN]  = SIGACT_STOP,
+    [SIGTTOU]  = SIGACT_STOP,
+    [SIGURG]   = SIGACT_IGN,
+    [SIGXCPU]  = SIGACT_CORE,
+    [SIGXFSZ]  = SIGACT_CORE,
+    [SIGVTALRM]= SIGACT_TERM,
+    [SIGPROF]  = SIGACT_TERM,
+    [SIGWINCH] = SIGACT_IGN,
+    [SIGIO]    = SIGACT_TERM,
+    [SIGPWR]   = SIGACT_TERM,
+    [SIGSYS]   = SIGACT_CORE,
+};
 
 typedef struct {
     int state;
@@ -162,16 +230,19 @@ int sched_fork_current(uint64_t user_rip, uint64_t user_rsp, uint64_t user_flags
 }
 
 
-/* sched_kill -- send a signal to a process; SIGKILL moves it to ZOMBIE.
+/* sched_kill -- send a signal to a process; apply default action.
  */
 int sched_kill(int pid, int signal) {
+    if (signal < 1 || signal > SIGSYS) return -1;
     for (uint32_t i = 0; i < PROC_MAX; i++) {
         if (procs[i].state == PROC_RUNNABLE && procs[i].pid == pid) {
             procs[i].signal = signal;
-            if (signal == SIGKILL || signal == SIGSEGV || signal == SIGINT)
+            uint8_t act = sig_default[signal];
+            if (act == SIGACT_TERM || act == SIGACT_CORE) {
                 procs[i].state = PROC_ZOMBIE;
-            if ((int)i == current_proc)
-                current_proc = -1;
+                if ((int)i == current_proc)
+                    current_proc = -1;
+            }
             return 0;
         }
     }
