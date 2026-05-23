@@ -5,11 +5,6 @@ LD = ld
 
 KCONFIG_HEADER = include/generated/autoconf.h
 
-# Flex is required by the Kconfig toolchain (scripts/kconfig/zconf.l)
-.PHONY: check_flex
-check_flex:
-	@command -v flex >/dev/null 2>&1 || { echo "ERROR: flex not found. flex is required to build the Kconfig infrastructure."; exit 1; }
-
 CFLAGS = -ffreestanding -mcmodel=kernel -mno-red-zone -m64 -mno-sse -mno-sse2 \
          -fno-pic -fno-pie -fcf-protection=none \
          -Iinclude -Iinclude/generated -Isrc
@@ -154,6 +149,7 @@ INIT_ELF = build/programs/init.elf
 
 
 all: check_flex check_config build/kernel.elf
+	@printf "\n  Build complete — build/kernel.elf\n"
 
 compress: check_config build/kernel.elf build/kernel.final.elf
 
@@ -193,6 +189,9 @@ check_config:
 		fi; \
 	fi
 
+check_flex:
+	@command -v flex >/dev/null 2>&1 || { echo "ERROR: flex not found. flex is required to build the Kconfig infrastructure."; exit 1; }
+
 build/kernel.elf: $(OBJS)
 	@printf "  LD      $@\n"
 	@$(LD) $(LDFLAGS) -o $@ $(OBJS)
@@ -228,7 +227,7 @@ $(INIT_ELF): $(INIT_SRC)
 	@$(CC) -m64 -static -nostdlib -e _start -Ttext 0x400000 $< -o $@
 
 
-.PHONY: all check_config help menuconfig xconfig defconfig tinyconfig allnoconfig allyesconfig allmodconfig uefi-bundle iso isos making run clean distclean install
+.PHONY: all check_flex check_config help menuconfig xconfig defconfig tinyconfig allnoconfig allyesconfig allmodconfig uefi-bundle iso isos making run run-debug run-test tags size clean distclean install
 help:
 	@printf "Peanut kernel make targets:\n"
 	@printf "  make all              Build the kernel (build/kernel.elf)\n"
@@ -252,6 +251,10 @@ help:
 	@printf "  make run-nvme         Run qemu with NVMe controller + nvme-disk.img\n"
 	@printf "  make run-net          Run qemu with e1000 NIC + serial console\n"
 	@printf "  make run-uefi         Run qemu with UEFI firmware\n"
+	@printf "  make run-debug        Run qemu with GDB stub (-s -S)\n"
+	@printf "  make run-test         Run qemu with auto-exit (for CI)\n"
+	@printf "  make tags             Generate ctags for symbol navigation\n"
+	@printf "  make size             Show kernel binary section sizes\n"
 	@printf "  make nvme-disk.img    Create empty 64M NVMe disk image\n"
 	@printf "  make install          Install kernel to /boot/peanut.elf\n"
 	@printf "  make clean            Remove build artifacts + .config + disk images\n"
@@ -385,6 +388,35 @@ run-uefi: iso uefi-bundle
 	-device qemu-xhci \
 	-device usb-kbd \
 	-device usb-mouse
+
+run-debug: iso disk.img
+	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
+	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
+	-device qemu-xhci \
+	-device usb-kbd \
+	-device usb-mouse \
+	-serial stdio \
+	-s -S
+
+run-test: iso disk.img
+	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
+	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
+	-device qemu-xhci \
+	-device usb-kbd \
+	-device usb-mouse \
+	-nographic \
+	-no-reboot \
+	-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
+	-serial stdio
+
+tags:
+	@command -v ctags >/dev/null 2>&1 && ctags -R --c-kinds=+p --fields=+iaS --extras=+q src/ include/ 2>/dev/null || true
+
+size: build/kernel.elf
+	@printf "  SIZE    build/kernel.elf\n"
+	@size build/kernel.elf
+	@printf "\n  SECTION BREAKDOWN:\n"
+	@objdump -h build/kernel.elf | grep -E '\.(text|data|bss|rodata)'
 
 nvme-disk.img:
 	@printf "  DISK     Generating NVMe disk image\n"

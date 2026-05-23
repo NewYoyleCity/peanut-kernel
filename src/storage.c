@@ -102,7 +102,7 @@ PeanutVolume* storage_get_root_volume() {
     }
 
     for (int i = 0; i < count; i++) {
-        if (partition_is_fat(&partitions[i])) {
+        if (fat32_probe_boot(dev, partitions[i].first_lba)) {
             if (fat32_mount(&out->fat32, &partitions[i]) == 0) {
                 out->fs_kind = PEANUT_FS_FAT32;
                 return 1;

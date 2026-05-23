@@ -204,10 +204,24 @@
     }
 }
 
+int fat32_probe_boot(BlockDevice* disk, uint64_t first_lba) {
+    uint8_t s[BLOCK_SECTOR_SIZE];
+    if (!disk) return 0;
+    if (block_read(disk, first_lba, 1, s) != 0) return 0;
+    if (s[510] != 0x55 || s[511] != 0xAA) return 0;
+    if (le16(s + 11) != BLOCK_SECTOR_SIZE) return 0;
+    uint8_t spc = s[13];
+    if (spc == 0 || (spc & (spc - 1)) != 0) return 0;
+    if (le16(s + 14) == 0) return 0;
+    if (s[16] == 0) return 0;
+    return 1;
+}
+
 int fat32_mount(Fat32Volume* volume, const Partition* partition) {
     uint8_t sector[BLOCK_SECTOR_SIZE];
 
-    if (!volume || !partition || !partition_is_fat(partition)) return -1;
+    if (!volume || !partition) return -1;
+    if (!fat32_probe_boot(partition->disk, partition->first_lba)) return -1;
     if (block_read(partition->disk, partition->first_lba, 1, sector) != 0) return -1;
     if (sector[510] != 0x55 || sector[511] != 0xAA) return -1;
     if (le16(sector + 11) != BLOCK_SECTOR_SIZE) return -1;

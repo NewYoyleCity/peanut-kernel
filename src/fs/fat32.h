@@ -29,6 +29,7 @@ typedef struct {
     uint32_t size;
 } Fat32DirEntry;
 
+int fat32_probe_boot(BlockDevice* disk, uint64_t first_lba);
 int fat32_mount(Fat32Volume* volume, const Partition* partition);
 uint32_t fat32_list_root(Fat32Volume* volume, Fat32DirEntry* entries, uint32_t max_entries);
 int fat32_find_dir_in_root(Fat32Volume* volume, const char* dirname, Fat32DirEntry* out);
