@@ -77,6 +77,15 @@ int vfs_pseudo_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len,
     return -1;
 }
 
+int vfs_pseudo_pwrite(const char* path, uint32_t off, const uint8_t* buf, uint32_t len, uint32_t* out) {
+    if (!path || !buf || !out)
+        return -1;
+    *out = 0;
+    if (dev_mounted && devtmpfs_is_path(path))
+        return devtmpfs_pwrite(path, off, buf, len, out);
+    return -1;
+}
+
 int vfs_pseudo_read(const char* path, uint8_t* buf, uint32_t len, uint32_t* out) {
     return vfs_pseudo_pread(path, 0, buf, len, out);
 }

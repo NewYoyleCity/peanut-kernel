@@ -6,12 +6,26 @@
 #define SYS_OPEN    2
 #define SYS_CLOSE   3
 #define SYS_ERRNO   4
-#define SYS_FORK    57
-#define SYS_YIELD   24
-#define SYS_KILL    62
-#define SYS_BRK     12
-#define SYS_EXEC    59
-#define SYS_EXIT    60
+
+// Extended general syscalls
+#define SYS_IOCTL       16
+#define SYS_STAT        17
+#define SYS_FSTAT       18
+#define SYS_DUP         32
+#define SYS_NANOSLEEP   35
+#define SYS_GETPID      39
+#define SYS_FORK        57
+#define SYS_EXEC        59
+#define SYS_EXIT        60
+#define SYS_KILL        62
+#define SYS_GETCWD      79
+#define SYS_CHDIR       80
+#define SYS_MKDIR       83
+#define SYS_GETTIMEOFDAY 96
+#define SYS_UNAME       160
+#define SYS_REBOOT      169
+#define SYS_YIELD       24
+#define SYS_BRK         12
 
 // Network syscalls
 #define SYS_SOCKET  41

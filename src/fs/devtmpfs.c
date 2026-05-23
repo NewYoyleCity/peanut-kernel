@@ -3,6 +3,10 @@
 #include "drivers/input/ps2.h"
 #include "config.h"
 
+#ifdef CONFIG_TTY
+#include "drivers/char/tty.h"
+#endif
+
 #ifdef CONFIG_USB_XHCI
 int usb_kbd_poll_char(char* out);
 #endif
@@ -57,8 +61,20 @@ int devtmpfs_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len, u
     *out = 0;
 
     if (streq(path, "/dev")) {
-        return copy_text("zero\nrandom\nurandom\nkbd\nmouse\nfstab\n", off, buf, len, out);
+        return copy_text("zero\nrandom\nurandom\nkbd\nmouse\nttyS0\nfstab\n", off, buf, len, out);
     }
+#ifdef CONFIG_TTY
+    if (streq(path, "/dev/ttyS0")) {
+        uint32_t got = 0;
+        while (got < len && tty_can_read()) {
+            char c;
+            if (tty_read_char(&c) != 0) break;
+            buf[got++] = (uint8_t)c;
+        }
+        *out = got;
+        return 0;
+    }
+#endif
     if (streq(path, "/dev/zero")) {
         for (uint32_t i = 0; i < len; i++) buf[i] = 0;
         *out = len;
@@ -108,5 +124,22 @@ int devtmpfs_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len, u
     if (streq(path, "/dev/fstab")) {
         return copy_text("devtmpfs /dev devtmpfs rw 0 0\nproc /proc proc ro 0 0\nsysfs /sys sysfs ro 0 0\n", off, buf, len, out);
     }
+    return -1;
+}
+
+int devtmpfs_pwrite(const char* path, uint32_t off, const uint8_t* buf, uint32_t len, uint32_t* out) {
+    (void)off;
+    if (!mounted || !path || !buf || !out)
+        return -1;
+    *out = 0;
+#ifdef CONFIG_TTY
+    if (streq(path, "/dev/ttyS0")) {
+        for (uint32_t i = 0; i < len; i++) {
+            if (tty_write_char((char)buf[i]) != 0) break;
+            (*out)++;
+        }
+        return 0;
+    }
+#endif
     return -1;
 }

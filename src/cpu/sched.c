@@ -1,5 +1,6 @@
 #include "cpu/sched.h"
 #include "cpu/pic.h"
+#include "cpu/pit.h"
 #include "config.h"
 #include "freelib/kstdint.h"
 
@@ -177,6 +178,7 @@ static int choose_next(void) {
 }
 
 uint64_t* irq_timer_dispatch(uint64_t* sp) {
+    pit_tick();
     pic_master_eoi();
     sched_jiffies++;
 

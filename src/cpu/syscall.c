@@ -8,6 +8,7 @@
 #include "freelib/kalloc.h"
 #include "programs/elf.h"
 #include "cpu/sched.h"
+#include "cpu/pit.h"
 
 #ifdef CONFIG_NET_TCP_IP
 #include "drivers/net/net.h"
@@ -210,6 +211,12 @@ static int read_file_into_mem(const char* path, uint8_t** out, uint32_t* out_sz)
     return 0;
 }
 
+static int sys_stat_path(const char* path, void* stat_buf) {
+    (void)path;
+    (void)stat_buf;
+    return -1;
+}
+
 uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t arg3,
                          uint64_t user_rip, uint64_t user_rsp, uint64_t user_flags) {
     last_errno = 0;
@@ -245,8 +252,13 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
             if (arg1 < FD_MAX && fds[arg1].used) {
                 Fd* f = &fds[arg1];
                 if (f->is_pseudo) {
-                    last_errno = 8;
-                    return (uint64_t)-1;
+                    uint32_t wrote = 0;
+                    if (vfs_pseudo_pwrite(f->path, f->off, (const uint8_t*)arg2, (uint32_t)arg3, &wrote) != 0) {
+                        last_errno = 8;
+                        return (uint64_t)-1;
+                    }
+                    f->off += wrote;
+                    return wrote;
                 }
                 if (!f->data) {
                     last_errno = 9;
@@ -279,6 +291,100 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
 
         case SYS_ERRNO:
             return last_errno;
+
+        case SYS_GETPID:
+            return (uint64_t)sched_current_pid();
+
+        case SYS_DUP: {
+            int oldfd = (int)arg1;
+            if (oldfd < 0 || oldfd >= FD_MAX || !fds[oldfd].used) {
+                last_errno = 14;
+                return (uint64_t)-1;
+            }
+            int newfd = alloc_fd();
+            if (newfd < 0) {
+                last_errno = 3;
+                return (uint64_t)-1;
+            }
+            fds[newfd] = fds[oldfd];
+            fds[newfd].off = fds[oldfd].off;
+            return (uint64_t)newfd;
+        }
+
+        case SYS_IOCTL:
+            last_errno = 25;
+            return (uint64_t)-1;
+
+        case SYS_STAT:
+        case SYS_FSTAT: {
+            last_errno = 28;
+            return (uint64_t)-1;
+        }
+
+        case SYS_GETCWD: {
+            char* buf = (char*)arg1;
+            uint64_t sz = arg2;
+            if (!buf || sz == 0) {
+                last_errno = 15;
+                return (uint64_t)-1;
+            }
+            buf[0] = '/';
+            if (sz > 1) buf[1] = '\0';
+            return (uint64_t)buf;
+        }
+
+        case SYS_CHDIR:
+            return 0;
+
+        case SYS_MKDIR:
+            last_errno = 28;
+            return (uint64_t)-1;
+
+        case SYS_GETTIMEOFDAY: {
+            uint64_t ms = pit_uptime_ms();
+            if ((void*)arg1) {
+                volatile uint64_t* tv_sec = (volatile uint64_t*)arg1;
+                volatile uint64_t* tv_usec = (volatile uint64_t*)(arg1 + 8);
+                *tv_sec = ms / 1000u;
+                *tv_usec = (ms % 1000u) * 1000u;
+            }
+            return 0;
+        }
+
+        case SYS_NANOSLEEP: {
+            volatile uint64_t* req = (volatile uint64_t*)arg1;
+            if (req) {
+                uint64_t ns = req[0] * 1000000000u + req[1];
+                uint64_t start = pit_uptime_ms();
+                while (pit_uptime_ms() - start < (ns / 1000000u)) {
+                    for (volatile int i = 0; i < 100; i++) {}
+                }
+            }
+            return 0;
+        }
+
+        case SYS_UNAME: {
+            if (arg1) {
+                char* buf = (char*)arg1;
+                kstrcpy(buf, "Peanut", 64);
+                if (1) { // avoid unused warning
+                    kstrcpy(buf + 65, "Peanut", 64);
+                    kstrcpy(buf + 130, "0.0.1-alpha", 64);
+                    kstrcpy(buf + 195, "Peanut", 64);
+                    kstrcpy(buf + 260, "x86_64", 64);
+                }
+            }
+            return 0;
+        }
+
+        case SYS_REBOOT: {
+            kprint("Rebooting...\n");
+            uint8_t good = 0;
+            __asm__ volatile("outb %%al, %%dx" : : "a"((uint8_t)0xFE), "d"((uint16_t)0x64));
+            good = 1;
+            (void)good;
+            for (;;) __asm__ volatile("cli; hlt");
+        }
 
         case SYS_FORK: {
             int pid = sched_fork_current(user_rip, user_rsp, user_flags);
@@ -435,77 +541,44 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
 
         case SYS_BIND: {
             int sockfd = (int)arg1;
-            sockaddr_t *addr = (sockaddr_t *)arg2;
-            socklen_t addrlen = (socklen_t)arg3;
-            
             if (sockfd < 0 || sockfd >= FD_MAX || !fds[sockfd].used || !fds[sockfd].is_socket) {
                 last_errno = 21;
                 return (uint64_t)-1;
             }
-            
-            (void)addr;
-            (void)addrlen;
-            
-            return 0;
+            last_errno = 21;
+            return (uint64_t)-1;
         }
 
         case SYS_LISTEN: {
             int sockfd = (int)arg1;
-            int backlog = (int)arg2;
-            
             if (sockfd < 0 || sockfd >= FD_MAX || !fds[sockfd].used || !fds[sockfd].is_socket) {
                 last_errno = 22;
                 return (uint64_t)-1;
             }
-            
-            (void)backlog;
-            
-            return 0;
+            last_errno = 22;
+            return (uint64_t)-1;
         }
 
         case SYS_ACCEPT: {
             int sockfd = (int)arg1;
-            sockaddr_t *addr = (sockaddr_t *)arg2;
-            socklen_t *addrlen = (socklen_t *)arg3;
-            
             if (sockfd < 0 || sockfd >= FD_MAX || !fds[sockfd].used || !fds[sockfd].is_socket) {
                 last_errno = 23;
                 return (uint64_t)-1;
             }
-            
-            (void)addr;
-            (void)addrlen;
-            
-            int newfd = alloc_fd();
-            if (newfd < 0) {
-                last_errno = 20;
-                return (uint64_t)-1;
-            }
-            
-            fds[newfd].is_socket = 1;
-            fds[newfd].socket_domain = fds[sockfd].socket_domain;
-            fds[newfd].socket_type = fds[sockfd].socket_type;
-            fds[newfd].socket_protocol = fds[sockfd].socket_protocol;
-            fds[newfd].data = kalloc(4096);
-            fds[newfd].size = 4096;
-            
-            return (uint64_t)newfd;
+            (void)sockfd;
+            last_errno = 23;
+            return (uint64_t)-1;
         }
 
         case SYS_CONNECT: {
             int sockfd = (int)arg1;
-            sockaddr_t *addr = (sockaddr_t *)arg2;
-            socklen_t addrlen = (socklen_t)arg3;
-            
             if (sockfd < 0 || sockfd >= FD_MAX || !fds[sockfd].used || !fds[sockfd].is_socket) {
                 last_errno = 24;
                 return (uint64_t)-1;
             }
-            
-            (void)addr;
-            (void)addrlen;
-            
-            return 0;
+            (void)sockfd;
+            last_errno = 24;
+            return (uint64_t)-1;
         }
 
         case SYS_SEND: {
@@ -531,34 +604,21 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
             }
 #endif
             
+            last_errno = 25;
             return (uint64_t)-1;
         }
 
         case SYS_RECV: {
             int sockfd = (int)arg1;
-            void *buf = (void *)arg2;
-            size_t len = (size_t)arg3;
-            int flags = 0;
-            
             if (sockfd < 0 || sockfd >= FD_MAX || !fds[sockfd].used || !fds[sockfd].is_socket) {
                 last_errno = 26;
                 return (uint64_t)-1;
             }
-            
-            (void)buf;
-            (void)len;
-            (void)flags;
-            
-            return 0;
+            last_errno = 26;
+            return (uint64_t)-1;
         }
 
         case SYS_GETADDRINFO: {
-            const char *node = (const char *)arg1;
-            const char *service = (const char *)arg2;
-            
-            (void)node;
-            (void)service;
-            
             last_errno = 27;
             return (uint64_t)-1;
         }

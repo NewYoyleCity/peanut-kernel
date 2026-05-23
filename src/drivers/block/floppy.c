@@ -15,11 +15,6 @@ void floppy_init(void) {
         floppy_drives[i].sectors_per_track = 0;
     }
     
-    /*
-     * The built-in profile describes the standard 1.44 MiB geometry used by
-     * FAT12 boot media. Controller I/O is kept separate from geometry so
-     * callers can validate addresses even when no FDC backend is present.
-     */
     floppy_drives[0].present = 1;
     floppy_drives[0].type = 1;
     floppy_drives[0].cylinders = 80;
@@ -30,50 +25,26 @@ void floppy_init(void) {
 }
 
 int floppy_read(uint8_t drive, uint32_t lba, uint8_t *buffer) {
-    if (drive >= 2 || !floppy_drives[drive].present) {
+    if (drive >= 2 || !floppy_drives[drive].present)
         return -1;
-    }
-    
     floppy_drive_t *drv = &floppy_drives[drive];
-    
-    /* Convert the logical sector number into the CHS tuple used by the FDC. */
     uint32_t sectors_per_cylinder = drv->heads * drv->sectors_per_track;
-    if (sectors_per_cylinder == 0 || lba >= sectors_per_cylinder * drv->cylinders) {
+    if (sectors_per_cylinder == 0 || lba >= sectors_per_cylinder * drv->cylinders)
         return -1;
-    }
-
-    uint32_t cylinder = lba / sectors_per_cylinder;
-    uint32_t temp = lba % sectors_per_cylinder;
-    uint32_t head = temp / drv->sectors_per_track;
-    uint32_t sector = temp % drv->sectors_per_track + 1;
-    
-    (void)cylinder;
-    (void)head;
-    (void)sector;
-    (void)buffer;
-    
     return -1;
 }
 
 int floppy_write(uint8_t drive, uint32_t lba, uint8_t *buffer) {
-    if (drive >= 2 || !floppy_drives[drive].present) {
+    if (drive >= 2 || !floppy_drives[drive].present)
         return -1;
-    }
-    
     floppy_drive_t *drv = &floppy_drives[drive];
     uint32_t sectors_per_cylinder = drv->heads * drv->sectors_per_track;
-    if (sectors_per_cylinder == 0 || lba >= sectors_per_cylinder * drv->cylinders) {
+    if (sectors_per_cylinder == 0 || lba >= sectors_per_cylinder * drv->cylinders)
         return -1;
-    }
-
-    (void)buffer;
-    
     return -1;
 }
 
 floppy_drive_t *floppy_get_drive(uint8_t drive) {
-    if (drive >= 2) {
-        return NULL;
-    }
+    if (drive >= 2) return NULL;
     return &floppy_drives[drive];
 }

@@ -158,6 +158,14 @@ config NET_VIRTIO
       Detects QEMU/KVM virtio-net devices. Virtqueue packet I/O still needs
       the transport implementation.
 
+config NET_WIFI
+    bool "Wi-Fi wireless adapter detection"
+    depends on NET_TCP_IP
+    default y
+    help
+      Detects common Wi-Fi chipsets (Intel, Atheros, Broadcom, Realtek, Ralink).
+      Actual data transmission requires per-chipset driver implementation.
+
 endmenu
 
 menu "Audio drivers"
@@ -186,6 +194,19 @@ config STORAGE_AHCI
     bool "AHCI SATA driver"
     default y
 
+config STORAGE_NVME
+    bool "NVMe SSD driver"
+    default y
+    help
+      Driver for NVMe non-volatile memory storage devices.
+
+config BLOCK_RAID
+    bool "Software RAID support (RAID0/RAID1)"
+    default n
+    help
+      Enables software RAID0 (striping) and RAID1 (mirroring)
+      across multiple block devices.
+
 config STORAGE_TESTS
     bool "Run storage self-tests at boot"
     default y
@@ -198,6 +219,16 @@ menu "USB drivers"
 config USB_XHCI
     bool "xHCI USB host controller"
     default y
+
+endmenu
+
+menu "Character drivers"
+
+config TTY
+    bool "Serial TTY driver (COM1 /dev/ttyS0)"
+    default y
+    help
+      Enables the 16550 UART serial driver exposed as /dev/ttyS0.
 
 endmenu
 

@@ -54,12 +54,28 @@ int usb_kbd_init(void);
 #endif
 #endif
 
+#ifdef CONFIG_TTY
+#include "drivers/char/tty.h"
+#endif
+
+#ifdef CONFIG_NET_WIFI
+#include "drivers/net/wifi.h"
+#endif
+
 #ifdef CONFIG_AUDIO_AC97
 #include "drivers/audio/ac97.h"
 #endif
 
 #ifdef CONFIG_AUDIO_HDA
 #include "drivers/audio/hda.h"
+#endif
+
+#ifdef CONFIG_STORAGE_NVME
+#include "drivers/block/nvme.h"
+#endif
+
+#ifdef CONFIG_BLOCK_RAID
+#include "drivers/block/raid.h"
 #endif
 
 void gdt_init_for_user();
@@ -71,11 +87,7 @@ void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
     if (fb_init_direct() != 0)
         fb_init_from_multiboot(multiboot_info);
     kclear();
-    kprint("Peanut Kernel is booting...\n");
-
-#ifdef CONFIG_KASLR
-    kprint("KASLR enabled (link-time only for now)\n");
-#endif
+    kprint_timed("Peanut Kernel booting...\n");
 
     vm_init();
     slab_init();
@@ -117,7 +129,7 @@ void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
 #endif
 
 #ifdef CONFIG_NET_TCP_IP
-    kprint("Network stack enabled\n");
+    kprint_timed("Network stack enabled\n");
     net_init();
 #ifdef CONFIG_NET_E1000
     e1000_init();
@@ -131,6 +143,22 @@ void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
 #ifdef CONFIG_NET_VIRTIO
     virtio_net_init();
 #endif
+#endif
+
+#ifdef CONFIG_TTY
+    tty_init();
+#endif
+
+#ifdef CONFIG_NET_WIFI
+    wifi_init();
+#endif
+
+#ifdef CONFIG_STORAGE_NVME
+    nvme_init();
+#endif
+
+#ifdef CONFIG_BLOCK_RAID
+    raid_init();
 #endif
 
 #ifdef CONFIG_AUDIO_AC97
@@ -148,13 +176,13 @@ void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
         kpanic("[Peanut kernel - panic - No bootable FAT32 volume found!]");
     }
 
-    kprint("Loading init process...\n");
+    kprint_timed("Loading init process...\n");
 
     if (elf_load_and_run(root, CONFIG_INIT_PATH) == 0) {
         goto reached_init;
     }
 
-    kprint("init not found, trying /INIT...\n");
+    kprint_timed("init not found, trying /INIT...\n");
     if (elf_load_and_run(root, "/INIT") == 0) {
         goto reached_init;
     }

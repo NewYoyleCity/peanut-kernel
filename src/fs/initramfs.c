@@ -1,4 +1,5 @@
 #include "fs/initramfs.h"
+#include "freelib/kstdio.h"
 
 extern uint8_t _initramfs_start[];
 extern uint8_t _initramfs_end[];
@@ -72,6 +73,15 @@ static int is_trailer(const char* name, uint32_t namesz) {
 }
 
 void initramfs_init(void) {
+    uintptr_t start = (uintptr_t)_initramfs_start;
+    uintptr_t end = (uintptr_t)_initramfs_end;
+    if (end > start) {
+        kprint("initramfs: embedded archive found (");
+        kprint_int((int32_t)(end - start));
+        kprint(" bytes)\n");
+    } else {
+        kprint("initramfs: no embedded archive\n");
+    }
 }
 
 int initramfs_find(const char* path, const uint8_t** data, uint32_t* size) {

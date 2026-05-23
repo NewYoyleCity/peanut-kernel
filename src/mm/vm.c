@@ -15,17 +15,31 @@ static PageTable kernel_pd[4] __attribute__((aligned(VM_PAGE_SIZE)));
 
 static uint8_t* page_bump;
 
+typedef struct FreePage {
+    struct FreePage* next;
+} FreePage;
+
+static FreePage* free_page_list;
+
 static uint64_t align_up(uint64_t v, uint64_t a) {
     return (v + a - 1ull) & ~(a - 1ull);
 }
 
 void vm_init(void) {
     page_bump = (uint8_t*)align_up((uint64_t)&_kernel_end, VM_PAGE_SIZE);
+    free_page_list = NULL;
     vm_map_identity_2m(0, VM_BOOT_MAP_BYTES, VM_FLAG_PRESENT | VM_FLAG_WRITE | VM_FLAG_USER);
     __asm__ volatile("mov %0, %%cr3" : : "r"((uint64_t)kernel_pml4) : "memory");
 }
 
 void* vm_alloc_page(void) {
+    if (free_page_list) {
+        void* page = free_page_list;
+        free_page_list = free_page_list->next;
+        for (uint32_t i = 0; i < VM_PAGE_SIZE; i++)
+            ((uint8_t*)page)[i] = 0;
+        return page;
+    }
     uint8_t* page = page_bump;
     page_bump += VM_PAGE_SIZE;
     for (uint32_t i = 0; i < VM_PAGE_SIZE; i++)
@@ -34,7 +48,10 @@ void* vm_alloc_page(void) {
 }
 
 void vm_free_page(void* page) {
-    (void)page;
+    if (!page) return;
+    FreePage* fp = (FreePage*)page;
+    fp->next = free_page_list;
+    free_page_list = fp;
 }
 
 uint64_t vm_kernel_cr3(void) {

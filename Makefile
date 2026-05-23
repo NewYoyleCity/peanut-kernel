@@ -43,6 +43,7 @@ SRCS_C := \
     src/drivers/entropy.c \
     src/drivers/video/fb.c \
     src/drivers/video/psf_font.c \
+    src/lib/inflate.c \
     src/programs/elf.c
 
 # Device Drivers
@@ -52,11 +53,17 @@ endif
 ifeq ($(CONFIG_STORAGE_AHCI),y)
   SRCS_C += src/drivers/block/ahci.c
 endif
+ifeq ($(CONFIG_STORAGE_NVME),y)
+  SRCS_C += src/drivers/block/nvme.c
+endif
 ifeq ($(CONFIG_STORAGE_CDROM),y)
   SRCS_C += src/drivers/block/cdrom.c src/fs/iso9660.c
 endif
 ifeq ($(CONFIG_STORAGE_FLOPPY),y)
   SRCS_C += src/drivers/block/floppy.c src/fs/fat12.c
+endif
+ifeq ($(CONFIG_BLOCK_RAID),y)
+  SRCS_C += src/drivers/block/raid.c
 endif
 ifeq ($(CONFIG_NET_TCP_IP),y)
   SRCS_C += src/drivers/net/net.c
@@ -73,6 +80,9 @@ endif
 ifeq ($(CONFIG_NET_VIRTIO),y)
   SRCS_C += src/drivers/net/virtio_net.c
 endif
+ifeq ($(CONFIG_NET_WIFI),y)
+  SRCS_C += src/drivers/net/wifi.c
+endif
 ifeq ($(CONFIG_AUDIO_AC97),y)
   SRCS_C += src/drivers/audio/ac97.c
 endif
@@ -85,6 +95,9 @@ ifeq ($(CONFIG_USB_XHCI),y)
 endif
 ifeq ($(CONFIG_INPUT_PS2),y)
   SRCS_C += src/drivers/input/ps2.c
+endif
+ifeq ($(CONFIG_TTY),y)
+  SRCS_C += src/drivers/char/tty.c
 endif
 ifeq ($(CONFIG_VIDEO_HDMI),y)
   SRCS_C += src/drivers/video/hdmi.c
@@ -117,6 +130,32 @@ INIT_ELF = build/programs/init.elf
 
 
 all: check_config build/kernel.elf
+
+compress: check_config build/kernel.elf build/kernel.final.elf
+
+build/kernel.bin: build/kernel.elf
+	@printf "  OBJCOPY $@\n"
+	@objcopy -O binary $< $@
+
+build/kernel.bin.gz: build/kernel.bin
+	@printf "  GZIP    $@\n"
+	@gzip -9 -c $< > $@
+
+build/decompress_stub.elf: src/boot/decompress_entry.asm src/boot/decompress_main.c src/lib/inflate.c src/boot/decompress.ld
+	@mkdir -p build/boot
+	@printf "  NASM    src/boot/decompress_entry.asm\n"
+	@nasm -f elf64 src/boot/decompress_entry.asm -o build/boot/decompress_entry.o
+	@printf "  GCC     src/boot/decompress_main.c\n"
+	@gcc $(CFLAGS) -c src/boot/decompress_main.c -o build/boot/decompress_main.o
+	@printf "  GCC     src/lib/inflate.c (decompressor)\n"
+	@gcc $(CFLAGS) -c src/lib/inflate.c -o build/boot/inflate_decomp.o
+	@printf "  LD      $@\n"
+	@ld -n -T src/boot/decompress.ld -z max-page-size=0x1000 --no-warn-rwx-segments -z noexecstack \
+		build/boot/decompress_entry.o build/boot/decompress_main.o build/boot/inflate_decomp.o -o $@
+
+build/kernel.final.elf: build/kernel.bin.gz build/decompress_stub.elf
+	@printf "  PACK    $@\n"
+	@python3 tools/pack_kernel.py build/decompress_stub.elf build/kernel.bin.gz $@
 
 check_config:
 	@if [ ! -f .config ]; then \
@@ -169,6 +208,7 @@ $(INIT_ELF): $(INIT_SRC)
 help:
 	@printf "Peanut kernel make targets:\n"
 	@printf "  make all              Build the kernel (build/kernel.elf)\n"
+	@printf "  make compress         Build compressed self-decompressing kernel\n"
 	@printf "  make menuconfig       Launch Kconfig menuconfig\n"
 	@printf "  make xconfig          Launch Kconfig Qt config\n"
 	@printf "  make defconfig        Apply default configuration\n"
@@ -184,6 +224,11 @@ help:
 	@printf "  make making           Build ISO + all supported disks\n"
 	@printf "  make uefi-bundle      Copy kernel.elf into build/efi/BOOT/PEANUT.KRN\n"
 	@printf "  make run              Run qemu with iso + disk.img\n"
+	@printf "  make run-serial       Run qemu with serial console on stdio\n"
+	@printf "  make run-nvme         Run qemu with NVMe controller + nvme-disk.img\n"
+	@printf "  make run-net          Run qemu with e1000 NIC + serial console\n"
+	@printf "  make run-uefi         Run qemu with UEFI firmware\n"
+	@printf "  make nvme-disk.img    Create empty 64M NVMe disk image\n"
 	@printf "  make install          Install kernel to /boot/peanut.elf\n"
 	@printf "  make clean            Remove build artifacts + .config + disk images\n"
 	@printf "  make distclean        clean + remove kernel config\n"
@@ -282,6 +327,42 @@ run: iso disk.img
 	-device qemu-xhci \
 	-device usb-kbd
 
+run-serial: iso disk.img
+	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
+	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
+	-device qemu-xhci \
+	-device usb-kbd \
+	-serial stdio
+
+run-nvme: iso disk.img
+	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
+	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
+	-drive file=nvme-disk.img,format=raw,if=none,id=nvme0 \
+	-device nvme,serial=deadbeef,drive=nvme0 \
+	-device qemu-xhci \
+	-device usb-kbd
+
+run-net: iso disk.img
+	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
+	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
+	-device e1000,netdev=net0 \
+	-netdev user,id=net0 \
+	-device qemu-xhci \
+	-device usb-kbd \
+	-serial stdio
+
+run-uefi: iso uefi-bundle
+	qemu-system-x86_64 -bios /usr/share/ovmf/OVMF.fd -boot d -cdrom build/peanut.iso \
+	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
+	-device qemu-xhci \
+	-device usb-kbd
+
+nvme-disk.img:
+	@printf "  DISK     Generating NVMe disk image\n"
+	dd if=/dev/zero of=nvme-disk.img bs=1M count=64
+	@printf 'label: dos\n2048,,c,*\n' | sfdisk nvme-disk.img
+	mkfs.vfat -F 32 --offset=2048 nvme-disk.img
+
 disk-exfat.img: $(INIT_ELF)
 	@printf "  DISK     Generating exFAT disk-exfat.img (no partition table)\n"
 	rm -f disk-exfat.img
@@ -312,7 +393,7 @@ disk-ext4.img: $(INIT_ELF)
 	debugfs -w -R "write build/programs/fstab /ETC/FSTAB" disk-ext4.img
 
 clean:
-	rm -rf build/ $(KCONFIG_HEADER) .config .config.old disk.img disk-exfat.img disk-ext4.img
+	rm -rf build/ $(KCONFIG_HEADER) .config .config.old disk.img disk-exfat.img disk-ext4.img nvme-disk.img
 	rm -rf include/generated include/config/auto.conf include/config/auto.conf.cmd include/config/tristate.conf
 	rm -f .tmpconfig .tmpconfig.h .tmpconfig_tristate
 

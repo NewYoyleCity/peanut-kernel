@@ -2,6 +2,7 @@
 #include "config.h"
 #include "drivers/bus/io.h"
 #include "drivers/video/fb.h"
+#include "cpu/pit.h"
 
 static int cursor_x = 0;
 static int cursor_y = 0;
@@ -115,4 +116,42 @@ void kclear() {
     }
     cursor_x = 0;
     cursor_y = 0;
+}
+
+static void print_padded(uint64_t n, int digits) {
+    char buf[12];
+    int i = digits;
+    buf[i] = '\0';
+    while (i > 0) {
+        i--;
+        buf[i] = (char)((n % 10u) + '0');
+        n /= 10u;
+    }
+    kprint(buf);
+}
+
+void kprint_timed(const char* str) {
+    uint64_t ms = pit_uptime_ms();
+    uint64_t sec = ms / 1000u;
+    uint64_t msec = ms % 1000u;
+    kputc('[');
+    print_padded(sec / 60u, 2);
+    kputc(':');
+    print_padded(sec % 60u, 2);
+    kputc('.');
+    print_padded(msec, 3);
+    kprint("] ");
+    kprint(str);
+}
+
+void kprint_timed_hex(const char* label, uint64_t n) {
+    kprint_timed(label);
+    kprint_hex(n);
+    kputc('\n');
+}
+
+void kprint_timed_int(const char* label, int64_t n) {
+    kprint_timed(label);
+    kprint_int(n);
+    kputc('\n');
 }
