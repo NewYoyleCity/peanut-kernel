@@ -218,14 +218,19 @@ static int elf_load_and_run_inner(PeanutVolume* vol, const char* path, const cha
         return elf_load_and_run_inner(vol, interp_path_fat, interp_path_fat, path);
     }
     
-    // Map user-accessible pages, then load segments
+    uint64_t aslr_slide = vm_aslr_slide();
+
     for (int i = 0; i < header->e_phnum; i++) {
         if (phdr[i].p_type == PT_LOAD) {
-            if (vm_map_user_pages(phdr[i].p_vaddr, phdr[i].p_memsz, 0) != 0) {
+            uint64_t vaddr = phdr[i].p_vaddr + aslr_slide;
+            uint64_t extra = VM_FLAG_NX;
+            if (phdr[i].p_flags & 1u)
+                extra = 0;
+            if (vm_map_user_pages(vaddr, phdr[i].p_memsz, extra) != 0) {
                 kfree(elf_buffer);
                 return -1;
             }
-            uint8_t* dest = (uint8_t*)phdr[i].p_vaddr;
+            uint8_t* dest = (uint8_t*)vaddr;
             uint8_t* src = elf_buffer + phdr[i].p_offset;
 
             for (uint64_t j = 0; j < phdr[i].p_filesz; j++) {
@@ -239,7 +244,7 @@ static int elf_load_and_run_inner(PeanutVolume* vol, const char* path, const cha
         }
     }
 
-    uint64_t entry_point = header->e_entry;
+    uint64_t entry_point = header->e_entry + aslr_slide;
     kfree(elf_buffer);
 
     jump_to_ring3(entry_point, argv0, argv1_opt);

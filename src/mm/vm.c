@@ -1,5 +1,6 @@
 #include "mm/vm.h"
 #include "freelib/kalloc.h"
+#include "config.h"
 
 #define VM_ENTRIES 512
 #define VM_PAGE_FRAME_MASK 0x000FFFFFFFFFF000ull
@@ -14,6 +15,10 @@ static PageTable kernel_pdpt __attribute__((aligned(VM_PAGE_SIZE)));
 static PageTable kernel_pd[4] __attribute__((aligned(VM_PAGE_SIZE)));
 
 static uint8_t* page_bump;
+
+#ifdef CONFIG_USER_ASLR
+static uint64_t aslr_state = 0xDEADBEEFCAFEBABEull;
+#endif
 
 typedef struct FreePage {
     struct FreePage* next;
@@ -137,6 +142,20 @@ int vm_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
     }
     (*pt)[pt_i] = phys | flags | VM_FLAG_PRESENT;
     return 0;
+}
+
+uint64_t vm_aslr_slide(void) {
+#ifdef CONFIG_USER_ASLR
+    aslr_state ^= aslr_state << 13;
+    aslr_state ^= aslr_state >> 7;
+    aslr_state ^= aslr_state << 17;
+    uint64_t slide = aslr_state & 0xFFFFFull;
+    slide *= VM_PAGE_SIZE;
+    slide &= 0x7FFFFFFFull;
+    return slide;
+#else
+    return 0;
+#endif
 }
 
 uint64_t vm_virt_to_phys(uint64_t virt) {

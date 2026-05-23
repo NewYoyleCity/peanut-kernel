@@ -46,6 +46,27 @@ config KASLR
       Randomizes the base address where the kernel is loaded at boot.
       This improves security by making kernel exploits harder.
 
+config USER_ASLR
+    bool "Userspace Address Space Layout Randomization"
+    default y
+    help
+      Randomizes the base address of user processes at exec time,
+      making ROP and other userland exploits harder to execute.
+
+config STACK_CANARY
+    bool "Kernel stack canary"
+    default y
+    help
+      Places a canary value on the kernel stack to detect
+      stack buffer overflows in kernel code.
+
+config DMESG_RESTRICT
+    bool "Restrict kernel log access"
+    default n
+    help
+      When set, non-root users cannot read kernel log messages
+      (currently a stub; effectively disables dmesg for unprivileged).
+
 endmenu
 
 
@@ -202,7 +223,7 @@ config STORAGE_NVME
 
 config BLOCK_RAID
     bool "Software RAID support (RAID0/RAID1)"
-    default n
+    default y
     help
       Enables software RAID0 (striping) and RAID1 (mirroring)
       across multiple block devices.

@@ -8,15 +8,36 @@
 #define IP_HDR_LEN 20
 #define TCP_HDR_LEN 20
 #define UDP_HDR_LEN 8
+#define ARP_HDR_LEN 28
 
-#define ETH_P_IP 0x0800
+#define ETH_P_IP  0x0800
 #define ETH_P_ARP 0x0806
+
+#define ARP_HTYPE_ETHER 1
+#define ARP_PTYPE_IP    0x0800
+#define ARP_HARD        1
+#define ARP_REQUEST     1
+#define ARP_REPLY       2
+
+#define ARP_CACHE_SIZE 16
 
 typedef struct {
     uint8_t dest[ETH_ALEN];
     uint8_t src[ETH_ALEN];
     uint16_t type;
 } __attribute__((packed)) eth_hdr_t;
+
+typedef struct {
+    uint16_t htype;
+    uint16_t ptype;
+    uint8_t  hlen;
+    uint8_t  plen;
+    uint16_t oper;
+    uint8_t  sha[ETH_ALEN];
+    uint32_t spa;
+    uint8_t  tha[ETH_ALEN];
+    uint32_t tpa;
+} __attribute__((packed)) arp_pkt_t;
 
 typedef struct {
     uint8_t ver_ihl;
@@ -77,5 +98,7 @@ void net_register_device(net_device_t *dev);
 void net_handle_packet(uint8_t *data, uint32_t len);
 uint16_t net_checksum(uint16_t *addr, uint32_t count);
 net_device_t *net_get_first_device(void);
+int net_arp_resolve(net_device_t *dev, uint32_t ip, uint8_t *mac_out);
+void net_arp_send_request(net_device_t *dev, uint32_t req_ip);
 
 #endif

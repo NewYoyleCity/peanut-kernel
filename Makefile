@@ -6,12 +6,20 @@ LD = ld
 KCONFIG_HEADER = include/generated/autoconf.h
 
 CFLAGS = -ffreestanding -mcmodel=kernel -mno-red-zone -m64 -mno-sse -mno-sse2 \
-         -fno-pic -fno-pie -fno-stack-protector -fcf-protection=none \
+         -fno-pic -fno-pie -fcf-protection=none \
          -Iinclude -Iinclude/generated -Isrc
 CXXFLAGS = -ffreestanding -mcmodel=kernel -mno-red-zone -m64 -mno-sse -mno-sse2 \
-           -fno-pic -fno-pie -fno-stack-protector -fcf-protection=none \
+           -fno-pic -fno-pie -fcf-protection=none \
            -fno-exceptions -fno-rtti -fno-threadsafe-statics \
            -Iinclude -Iinclude/generated -Isrc
+
+ifeq ($(CONFIG_STACK_CANARY),y)
+  CFLAGS += -fstack-protector-strong
+  CXXFLAGS += -fstack-protector-strong
+else
+  CFLAGS += -fno-stack-protector
+  CXXFLAGS += -fno-stack-protector
+endif
 ASFLAGS = -f elf64
 LDFLAGS = -n -T linker.ld -z max-page-size=0x1000 --no-warn-rwx-segments -z noexecstack \
           -nostdlib
@@ -27,6 +35,7 @@ SRCS_C := \
     src/freelib/kstdio.c \
     src/freelib/kalloc.c \
     src/freelib/slab.c \
+    src/freelib/stack_protector.c \
     src/cpu/gdt.c \
     src/cpu/idt.c \
     src/cpu/pic.c \

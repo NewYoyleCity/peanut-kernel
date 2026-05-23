@@ -12,4 +12,6 @@ include/config/auto.conf
 include/config/auto.conf.cmd
 include/config/tristate.conf
 include/config/*.h
+include/config/*/
 include/generated/
+tools/__pycache__/
