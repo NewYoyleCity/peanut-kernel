@@ -1,6 +1,12 @@
 #include "fs/devtmpfs.h"
 #include "drivers/entropy.h"
 #include "drivers/input/ps2.h"
+#include "config.h"
+
+#ifdef CONFIG_USB_XHCI
+int usb_kbd_poll_char(char* out);
+#endif
+
 
 static int mounted;
 
@@ -71,8 +77,13 @@ int devtmpfs_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len, u
     if (streq(path, "/dev/kbd")) {
         uint32_t got = 0;
         while (got < len) {
-            char c;
-            if (!ps2_poll_char(&c))
+            char c = 0;
+            int have = ps2_poll_char(&c);
+#ifdef CONFIG_USB_XHCI
+            if (!have)
+                have = (usb_kbd_poll_char(&c) == 0) ? 1 : 0;
+#endif
+            if (!have)
                 break;
             buf[got++] = (uint8_t)c;
             entropy_mix(((uint64_t)c << 32) ^ got);

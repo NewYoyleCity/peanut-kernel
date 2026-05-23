@@ -165,11 +165,13 @@ static int ahci_transfer(BlockDevice* dev, uint64_t lba, uint32_t count, void* b
     header->cfl = sizeof(FisRegH2D) / sizeof(uint32_t);
     header->w = write ? 1 : 0;
     header->prdtl = 1;
-    header->ctba = (uint32_t)(uintptr_t)&pd->command_table;
-    header->ctbau = 0;
+    uint64_t ct_phys = (uint64_t)(uintptr_t)&pd->command_table;
+    header->ctba = (uint32_t)ct_phys;
+    header->ctbau = (uint32_t)(ct_phys >> 32);
 
-    pd->command_table.prdt_entry[0].dba = (uint32_t)(uintptr_t)buffer;
-    pd->command_table.prdt_entry[0].dbau = 0;
+    uint64_t buf_phys = (uint64_t)(uintptr_t)buffer;
+    pd->command_table.prdt_entry[0].dba = (uint32_t)buf_phys;
+    pd->command_table.prdt_entry[0].dbau = (uint32_t)(buf_phys >> 32);
     pd->command_table.prdt_entry[0].dbc = (count * BLOCK_SECTOR_SIZE) - 1;
 
     FisRegH2D* fis = (FisRegH2D*)pd->command_table.cfis;
@@ -245,13 +247,16 @@ int ahci_init() {
         memzero(pd->command_list, sizeof(pd->command_list));
         memzero(pd->fis_area, sizeof(pd->fis_area));
 
-        port->clb = (uint32_t)(uintptr_t)pd->command_list;
-        port->clbu = 0;
-        port->fb = (uint32_t)(uintptr_t)pd->fis_area;
-        port->fbu = 0;
+        uint64_t cl_phys = (uint64_t)(uintptr_t)pd->command_list;
+        port->clb = (uint32_t)cl_phys;
+        port->clbu = (uint32_t)(cl_phys >> 32);
+        uint64_t fis_phys = (uint64_t)(uintptr_t)pd->fis_area;
+        port->fb = (uint32_t)fis_phys;
+        port->fbu = (uint32_t)(fis_phys >> 32);
 
-        pd->command_list[0].ctba = (uint32_t)(uintptr_t)&pd->command_table;
-        pd->command_list[0].ctbau = 0;
+        uint64_t ct_phys = (uint64_t)(uintptr_t)&pd->command_table;
+        pd->command_list[0].ctba = (uint32_t)ct_phys;
+        pd->command_list[0].ctbau = (uint32_t)(ct_phys >> 32);
 
         port->serr = 0xFFFFFFFF;
         port->is = 0xFFFFFFFF;
@@ -264,6 +269,42 @@ int ahci_init() {
         dev->driver_data = pd;
         dev->read = ahci_read;
         dev->write = ahci_write;
+
+        uint16_t identify[256];
+        memzero(identify, sizeof(identify));
+        memzero(&pd->command_table, sizeof(pd->command_table));
+        HbaCommandHeader* id_header = &pd->command_list[0];
+        id_header->cfl = sizeof(FisRegH2D) / sizeof(uint32_t);
+        id_header->w = 0;
+        id_header->prdtl = 1;
+        uint64_t id_buf_phys = (uint64_t)(uintptr_t)identify;
+        id_header->ctba = (uint32_t)ct_phys;
+        id_header->ctbau = (uint32_t)(ct_phys >> 32);
+        pd->command_table.prdt_entry[0].dba = (uint32_t)id_buf_phys;
+        pd->command_table.prdt_entry[0].dbau = (uint32_t)(id_buf_phys >> 32);
+        pd->command_table.prdt_entry[0].dbc = 511;
+        FisRegH2D* id_fis = (FisRegH2D*)pd->command_table.cfis;
+        memzero(id_fis, sizeof(FisRegH2D));
+        id_fis->fis_type = FIS_TYPE_REG_H2D;
+        id_fis->c = 1;
+        id_fis->command = 0xEC;
+        id_fis->device = 0;
+        for (uint32_t spin = 0; spin < 100000; spin++) {
+            if ((port->tfd & (0x80 | 0x08)) == 0) break;
+        }
+        port->ci = 1;
+        for (;;) {
+            if ((port->ci & 1) == 0) break;
+            if (port->is & (1 << 30)) break;
+        }
+        if (identify[0] != 0) {
+            uint64_t sectors = ((uint64_t)identify[61] << 16) | identify[60];
+            if (sectors == 0 && (identify[83] & (1 << 10)))
+                sectors = ((uint64_t)identify[103] << 48) | ((uint64_t)identify[102] << 32) |
+                          ((uint64_t)identify[101] << 16) | identify[100];
+            if (sectors > 0xFFFFFFFFu) sectors = 0xFFFFFFFFu;
+            dev->sector_count = (uint32_t)sectors;
+        }
         ahci_count++;
     }
 

@@ -44,15 +44,20 @@ void kputc(char c) {
         cursor_x = 0;
         cursor_y++;
     } else {
-        int index = (cursor_y * SCREEN_WIDTH) + cursor_x;
-        vga_buffer[index] = (unsigned short)c | (CONFIG_VGA_COLOR << 8);
+        if (cursor_x >= SCREEN_WIDTH) {
+            cursor_x = 0;
+            cursor_y++;
+        }
+        if (cursor_x < SCREEN_WIDTH) {
+            int index = (cursor_y * SCREEN_WIDTH) + cursor_x;
+            vga_buffer[index] = (unsigned short)c | (CONFIG_VGA_COLOR << 8);
+        }
         cursor_x++;
     }
 
     
-    if (cursor_x >= SCREEN_WIDTH) {
-        cursor_x = 0;
-        cursor_y++;
+    if (cursor_x > SCREEN_WIDTH) {
+        cursor_x = SCREEN_WIDTH;
     }
 
     
@@ -81,15 +86,18 @@ void kprint_int(int64_t n) {
         kputc('0');
         return;
     }
+    uint64_t abs_n;
     if (n < 0) {
         kputc('-');
-        n = -n;
+        abs_n = (uint64_t)(-(n + 1)) + 1u;
+    } else {
+        abs_n = (uint64_t)n;
     }
-    char buffer[20];
+    char buffer[21];
     int i = 0;
-    while (n > 0) {
-        buffer[i++] = (n % 10) + '0';
-        n /= 10;
+    while (abs_n > 0) {
+        buffer[i++] = (char)((abs_n % 10u) + '0');
+        abs_n /= 10u;
     }
     while (i > 0) {
         kputc(buffer[--i]);

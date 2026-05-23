@@ -47,7 +47,7 @@ void net_handle_packet(uint8_t *data, uint32_t len) {
         ip_hdr_t *ip = (ip_hdr_t *)(data + ETH_HDR_LEN);
         uint32_t ip_hdr_len = (ip->ver_ihl & 0x0F) * 4;
         
-        if (len < ETH_HDR_LEN + ip_hdr_len) {
+        if (ip_hdr_len < 20 || len < ETH_HDR_LEN + ip_hdr_len) {
             return;
         }
         

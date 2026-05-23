@@ -102,13 +102,13 @@ void e1000_send(net_device_t *dev, uint8_t *data, uint32_t len) {
     static uint32_t tx_index = 0;
     e1000_tx_desc_t *desc = &tx_descs[tx_index];
     
-    // Copy data to buffer
+    uint32_t copy_len = len < 1518 ? len : 1518;
     uint8_t *tx_buffer = (uint8_t *)(uintptr_t)desc->addr;
-    for (uint32_t i = 0; i < len && i < 1518; i++) {
+    for (uint32_t i = 0; i < copy_len; i++) {
         tx_buffer[i] = data[i];
     }
     
-    desc->length = len;
+    desc->length = copy_len;
     desc->cmd = 0x0B; // EOP, RS
     desc->status = 0;
     
@@ -192,6 +192,14 @@ void e1000_init(void) {
     
     if (!tx_descs || !rx_descs || !rx_buffers || !tx_buffers) {
         kprint("E1000: Memory allocation failed\n");
+        if (tx_descs) kfree(tx_descs);
+        if (rx_descs) kfree(rx_descs);
+        if (rx_buffers) kfree(rx_buffers);
+        if (tx_buffers) kfree(tx_buffers);
+        tx_descs = NULL;
+        rx_descs = NULL;
+        rx_buffers = NULL;
+        tx_buffers = NULL;
         return;
     }
     

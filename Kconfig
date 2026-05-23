@@ -14,6 +14,13 @@ config INIT_PATH
     string "Default init path"
     default "/sbin/init"
 
+config PRINTK
+    bool "Enable kernel support for printk"
+    default y
+    help
+      Enable printk/logging support for kernel messages.
+      Disabling this removes all kernel debug output.
+
 menu "Advanced Features (for experts only)"
     config ADV_WRITE_TEST
         bool "Enable filesystem write test (destructive if misconfigured)"

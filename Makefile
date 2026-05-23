@@ -1,4 +1,5 @@
 CC = gcc
+CXX = g++
 AS = nasm
 LD = ld
 
@@ -7,13 +8,109 @@ KCONFIG_HEADER = include/generated/autoconf.h
 CFLAGS = -ffreestanding -mcmodel=kernel -mno-red-zone -m64 -mno-sse -mno-sse2 \
          -fno-pic -fno-pie -fno-stack-protector -fcf-protection=none \
          -Iinclude -Iinclude/generated -Isrc
+CXXFLAGS = -ffreestanding -mcmodel=kernel -mno-red-zone -m64 -mno-sse -mno-sse2 \
+           -fno-pic -fno-pie -fno-stack-protector -fcf-protection=none \
+           -fno-exceptions -fno-rtti -fno-threadsafe-statics \
+           -Iinclude -Iinclude/generated -Isrc
 ASFLAGS = -f elf64
-LDFLAGS = -n -T linker.ld -z max-page-size=0x1000 --no-warn-rwx-segments -z noexecstack
+LDFLAGS = -n -T linker.ld -z max-page-size=0x1000 --no-warn-rwx-segments -z noexecstack \
+          -nostdlib
 
-ALL_C = $(shell find src -name '*.c' -print | sort)
-SRCS_C = $(filter-out src/programs/init_sample.c, $(ALL_C))
+# --- Conditional sources based on .config ---
+-include .config
 
-OBJS = build/switch.o build/cpu/irq.o build/fonts/terminal_psf.o $(patsubst src/%.c, build/%.o, $(SRCS_C))
+SRCS_C := \
+    src/main.c \
+    src/storage.c \
+    src/users.c \
+    src/freelib/kpanic.c \
+    src/freelib/kstdio.c \
+    src/freelib/kalloc.c \
+    src/freelib/slab.c \
+    src/cpu/gdt.c \
+    src/cpu/idt.c \
+    src/cpu/pic.c \
+    src/cpu/pit.c \
+    src/cpu/sched.c \
+    src/cpu/syscall.c \
+    src/mm/vm.c \
+    src/fs/vfs.c \
+    src/fs/devtmpfs.c \
+    src/fs/partition.c \
+    src/fs/initramfs.c \
+    src/drivers/block/block.c \
+    src/drivers/bus/pci.c \
+    src/drivers/entropy.c \
+    src/drivers/video/fb.c \
+    src/drivers/video/psf_font.c \
+    src/programs/elf.c
+
+# Device Drivers
+ifeq ($(CONFIG_STORAGE_IDE),y)
+  SRCS_C += src/drivers/block/ide.c
+endif
+ifeq ($(CONFIG_STORAGE_AHCI),y)
+  SRCS_C += src/drivers/block/ahci.c
+endif
+ifeq ($(CONFIG_STORAGE_CDROM),y)
+  SRCS_C += src/drivers/block/cdrom.c src/fs/iso9660.c
+endif
+ifeq ($(CONFIG_STORAGE_FLOPPY),y)
+  SRCS_C += src/drivers/block/floppy.c src/fs/fat12.c
+endif
+ifeq ($(CONFIG_NET_TCP_IP),y)
+  SRCS_C += src/drivers/net/net.c
+endif
+ifeq ($(CONFIG_NET_E1000),y)
+  SRCS_C += src/drivers/net/e1000.c
+endif
+ifeq ($(CONFIG_NET_RTL8139),y)
+  SRCS_C += src/drivers/net/rtl8139.c
+endif
+ifeq ($(CONFIG_NET_RTL8169),y)
+  SRCS_C += src/drivers/net/rtl8169.c
+endif
+ifeq ($(CONFIG_NET_VIRTIO),y)
+  SRCS_C += src/drivers/net/virtio_net.c
+endif
+ifeq ($(CONFIG_AUDIO_AC97),y)
+  SRCS_C += src/drivers/audio/ac97.c
+endif
+ifeq ($(CONFIG_AUDIO_HDA),y)
+  SRCS_C += src/drivers/audio/hda.c
+endif
+ifeq ($(CONFIG_USB_XHCI),y)
+  SRCS_C += src/drivers/usb/xhci.c
+  SRCS_C += src/drivers/usb/usb_hid.cpp
+endif
+ifeq ($(CONFIG_INPUT_PS2),y)
+  SRCS_C += src/drivers/input/ps2.c
+endif
+ifeq ($(CONFIG_VIDEO_HDMI),y)
+  SRCS_C += src/drivers/video/hdmi.c
+endif
+
+# Filesystems
+ifeq ($(CONFIG_FS_FAT32_READ),y)
+  SRCS_C += src/fs/fat32.c
+endif
+ifeq ($(CONFIG_FS_EXFAT_READ),y)
+  SRCS_C += src/fs/exfat.c
+endif
+ifneq ($(filter y,$(CONFIG_FS_EXT2_READ)$(CONFIG_FS_EXT3_READ)$(CONFIG_FS_EXT4_READ)),)
+  SRCS_C += src/fs/extfs.c
+endif
+
+# Tests
+ifeq ($(CONFIG_STORAGE_TESTS),y)
+  SRCS_C += src/tests/storage_tests.c
+endif
+
+SRCS_CPP := $(filter %.cpp, $(SRCS_C))
+SRCS_C := $(filter %.c, $(SRCS_C))
+OBJS = build/switch.o build/cpu/irq.o build/fonts/terminal_psf.o \
+       $(patsubst src/%.c, build/%.o, $(SRCS_C)) \
+       $(patsubst src/%.cpp, build/%.o, $(SRCS_CPP))
 
 INIT_SRC = src/programs/init_sample.c
 INIT_ELF = build/programs/init.elf
@@ -57,28 +154,39 @@ build/%.o: src/%.c
 	@printf "  GCC     $<\n"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
+build/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	@printf "  GXX     $<\n"
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
+
 $(INIT_ELF): $(INIT_SRC)
 	@mkdir -p build/programs
 	@printf "  USER    $<\n"
 	@$(CC) -m64 -static -nostdlib -e _start -Ttext 0x400000 $< -o $@
 
 
-.PHONY: all check_config help menuconfig defconfig uefi-bundle iso isos making run clean distclean
+.PHONY: all check_config help menuconfig xconfig defconfig tinyconfig allnoconfig allyesconfig allmodconfig uefi-bundle iso isos making run clean distclean install
 help:
-	@printf "Peanut-kernel make targets:\n"
+	@printf "Peanut kernel make targets:\n"
 	@printf "  make all              Build the kernel (build/kernel.elf)\n"
-	@printf "  make defconfig       Generate include/generated/autoconf.h via alldefconfig\n"
-	@printf "  make menuconfig      Launch Kconfig menuconfig\n"
-	@printf "  make iso             Build ISO for GRUB (kernel only)\n"
-	@printf "  make isos            Build all ISO/EFI bundle artifacts\n"
+	@printf "  make menuconfig       Launch Kconfig menuconfig\n"
+	@printf "  make xconfig          Launch Kconfig Qt config\n"
+	@printf "  make defconfig        Apply default configuration\n"
+	@printf "  make tinyconfig       Minimal configuration\n"
+	@printf "  make allnoconfig      All options disabled\n"
+	@printf "  make allyesconfig     All options enabled\n"
+	@printf "  make allmodconfig     All options modular\n"
+	@printf "  make iso              Build ISO for GRUB (kernel only)\n"
+	@printf "  make isos             Build all ISO/EFI bundle artifacts\n"
 	@printf "  make disk.img         Build partitioned FAT32 disk with init\n"
-	@printf "  make disk-exfat.img  Build exFAT disk with init\n"
-	@printf "  make disk-ext4.img   Build ext4 disk with init\n"
-	@printf "  make making          Build ISO + all supported disks\n"
-	@printf "  make uefi-bundle     Copy kernel.elf into build/efi/BOOT/PEANUT.KRN\n"
-	@printf "  make run             Run qemu with iso + disk.img\n"
-	@printf "  make clean           Remove build artifacts + .config + disk images\n"
-	@printf "  make distclean       clean + remove kernel config\n"
+	@printf "  make disk-exfat.img   Build exFAT disk with init\n"
+	@printf "  make disk-ext4.img    Build ext4 disk with init\n"
+	@printf "  make making           Build ISO + all supported disks\n"
+	@printf "  make uefi-bundle      Copy kernel.elf into build/efi/BOOT/PEANUT.KRN\n"
+	@printf "  make run              Run qemu with iso + disk.img\n"
+	@printf "  make install          Install kernel to /boot/peanut.elf\n"
+	@printf "  make clean            Remove build artifacts + .config + disk images\n"
+	@printf "  make distclean        clean + remove kernel config\n"
 
 # --- Configuration ---
 
@@ -93,6 +201,7 @@ xconfig:
 defconfig:
 	@echo "alldefconfig Kconfig"
 	@./scripts/kconfig/conf --alldefconfig Kconfig
+	@mkdir -p include/generated
 	@./scripts/kconfig/conf --silentoldconfig Kconfig
 
 tinyconfig:
@@ -203,7 +312,9 @@ disk-ext4.img: $(INIT_ELF)
 	debugfs -w -R "write build/programs/fstab /ETC/FSTAB" disk-ext4.img
 
 clean:
-	rm -rf build/ $(KCONFIG_HEADER) .config disk.img disk-exfat.img disk-ext4.img
+	rm -rf build/ $(KCONFIG_HEADER) .config .config.old disk.img disk-exfat.img disk-ext4.img
+	rm -rf include/generated include/config/auto.conf include/config/auto.conf.cmd include/config/tristate.conf
+	rm -f .tmpconfig .tmpconfig.h .tmpconfig_tristate
 
 distclean: clean
 	rm -f .config.old

@@ -1,7 +1,21 @@
 #include "drivers/video/fb.h"
 #include "drivers/video/psf_font.h"
+#include "drivers/bus/io.h"
 
 #define MULTIBOOT_TAG_TYPE_FRAMEBUFFER 8
+
+#define VBE_DISPI_IOPORT_INDEX 0x01CE
+#define VBE_DISPI_IOPORT_DATA  0x01CF
+#define VBE_DISPI_INDEX_ID      0
+#define VBE_DISPI_INDEX_XRES    1
+#define VBE_DISPI_INDEX_YRES    2
+#define VBE_DISPI_INDEX_BPP     3
+#define VBE_DISPI_INDEX_ENABLE  4
+#define VBE_DISPI_DISABLED      0x00
+#define VBE_DISPI_ENABLED       0x01
+#define VBE_DISPI_LFB_ENABLED   0x40
+#define VBE_DISPI_NOCLEARMEM    0x80
+#define VBE_LFB_PHYS_ADDR       0xE0000000ull
 
 typedef struct {
     uint32_t type;
@@ -27,6 +41,27 @@ static uint32_t height;
 static uint32_t cursor_x;
 static uint32_t cursor_y;
 static PsfFont font;
+
+static void vbe_write(uint16_t index, uint16_t value) {
+    outw(VBE_DISPI_IOPORT_INDEX, index);
+    outw(VBE_DISPI_IOPORT_DATA, value);
+}
+
+int fb_init_direct(void) {
+    if (psf_terminal_font(&font) != 0)
+        return -1;
+    vbe_write(VBE_DISPI_INDEX_ID, 0xB0C4);
+    vbe_write(VBE_DISPI_INDEX_XRES, 1024);
+    vbe_write(VBE_DISPI_INDEX_YRES, 768);
+    vbe_write(VBE_DISPI_INDEX_BPP, 32);
+    vbe_write(VBE_DISPI_INDEX_ENABLE, VBE_DISPI_ENABLED | VBE_DISPI_LFB_ENABLED);
+    fb = (uint32_t*)VBE_LFB_PHYS_ADDR;
+    pitch_pixels = 1024;
+    width = 1024;
+    height = 768;
+    fb_clear();
+    return 0;
+}
 
 static uint32_t align8(uint32_t v) {
     return (v + 7u) & ~7u;

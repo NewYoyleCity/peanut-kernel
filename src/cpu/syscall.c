@@ -86,7 +86,7 @@ static uint64_t handle_brk(uintptr_t addr) {
     if (addr == 0)
         return (uint64_t)user_brk_end;
 
-    if (addr < base || addr > limit)
+    if (addr < base || addr >= limit)
         return (uint64_t)-1;
 
     user_brk_end = addr;
@@ -510,9 +510,9 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
 
         case SYS_SEND: {
             int sockfd = (int)arg1;
-            void *buf = (void *)arg2;
+            const void *buf = (const void *)arg2;
             size_t len = (size_t)arg3;
-            int flags = (int)user_rip;
+            int flags = 0;
             
             if (sockfd < 0 || sockfd >= FD_MAX || !fds[sockfd].used || !fds[sockfd].is_socket) {
                 last_errno = 25;
@@ -538,7 +538,7 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
             int sockfd = (int)arg1;
             void *buf = (void *)arg2;
             size_t len = (size_t)arg3;
-            int flags = (int)user_rip;
+            int flags = 0;
             
             if (sockfd < 0 || sockfd >= FD_MAX || !fds[sockfd].used || !fds[sockfd].is_socket) {
                 last_errno = 26;

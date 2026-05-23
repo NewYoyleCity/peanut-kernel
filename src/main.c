@@ -27,6 +27,7 @@
 
 #ifdef CONFIG_USB_XHCI
 #include "drivers/usb/xhci.h"
+int usb_kbd_init(void);
 #endif
 
 #ifdef CONFIG_STORAGE_CDROM
@@ -67,7 +68,8 @@ void irq_timer(void);
 
 void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
     (void)kaslr_offset;
-    fb_init_from_multiboot(multiboot_info);
+    if (fb_init_direct() != 0)
+        fb_init_from_multiboot(multiboot_info);
     kclear();
     kprint("Peanut Kernel is booting...\n");
 
@@ -99,6 +101,7 @@ void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
 
 #ifdef CONFIG_USB_XHCI
     xhci_init();
+    usb_kbd_init();
 #endif
 
 #ifdef CONFIG_VIDEO_HDMI

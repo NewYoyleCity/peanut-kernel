@@ -2,6 +2,7 @@
 #include "freelib/kalloc.h"
 
 #define VM_ENTRIES 512
+#define VM_PAGE_FRAME_MASK 0x000FFFFFFFFFF000ull
 #define VM_BOOT_MAP_BYTES (4ull * 1024ull * 1024ull * 1024ull)
 
 typedef uint64_t PageTable[VM_ENTRIES];
@@ -72,13 +73,13 @@ int vm_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
         pdpt = (PageTable*)vm_alloc_page();
         kernel_pml4[pml4_i] = (uint64_t)pdpt | VM_FLAG_PRESENT | VM_FLAG_WRITE | VM_FLAG_USER;
     } else {
-        pdpt = (PageTable*)(kernel_pml4[pml4_i] & ~0xfffull);
+        pdpt = (PageTable*)(kernel_pml4[pml4_i] & VM_PAGE_FRAME_MASK);
     }
     if (!((*pdpt)[pdpt_i] & VM_FLAG_PRESENT)) {
         pd = (PageTable*)vm_alloc_page();
         (*pdpt)[pdpt_i] = (uint64_t)pd | VM_FLAG_PRESENT | VM_FLAG_WRITE | VM_FLAG_USER;
     } else {
-        pd = (PageTable*)((*pdpt)[pdpt_i] & ~0xfffull);
+        pd = (PageTable*)((*pdpt)[pdpt_i] & VM_PAGE_FRAME_MASK);
     }
     if ((*pd)[pd_i] & VM_FLAG_HUGE)
         return -1;
@@ -86,7 +87,7 @@ int vm_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
         pt = (PageTable*)vm_alloc_page();
         (*pd)[pd_i] = (uint64_t)pt | VM_FLAG_PRESENT | VM_FLAG_WRITE | VM_FLAG_USER;
     } else {
-        pt = (PageTable*)((*pd)[pd_i] & ~0xfffull);
+        pt = (PageTable*)((*pd)[pd_i] & VM_PAGE_FRAME_MASK);
     }
     (*pt)[pt_i] = phys | flags | VM_FLAG_PRESENT;
     return 0;
@@ -99,16 +100,16 @@ uint64_t vm_virt_to_phys(uint64_t virt) {
     uint32_t pt_i = (uint32_t)((virt >> 12) & 0x1ffu);
     uint64_t pml4e = kernel_pml4[pml4_i];
     if (!(pml4e & VM_FLAG_PRESENT)) return 0;
-    PageTable* pdpt = (PageTable*)(pml4e & ~0xfffull);
+    PageTable* pdpt = (PageTable*)(pml4e & VM_PAGE_FRAME_MASK);
     uint64_t pdpte = (*pdpt)[pdpt_i];
     if (!(pdpte & VM_FLAG_PRESENT)) return 0;
-    PageTable* pd = (PageTable*)(pdpte & ~0xfffull);
+    PageTable* pd = (PageTable*)(pdpte & VM_PAGE_FRAME_MASK);
     uint64_t pde = (*pd)[pd_i];
     if (!(pde & VM_FLAG_PRESENT)) return 0;
     if (pde & VM_FLAG_HUGE)
         return (pde & ~0x1fffffull) | (virt & 0x1fffffull);
-    PageTable* pt = (PageTable*)(pde & ~0xfffull);
+    PageTable* pt = (PageTable*)(pde & VM_PAGE_FRAME_MASK);
     uint64_t pte = (*pt)[pt_i];
     if (!(pte & VM_FLAG_PRESENT)) return 0;
-    return (pte & ~0xfffull) | (virt & 0xfffull);
+    return (pte & VM_PAGE_FRAME_MASK) | (virt & 0xfffull);
 }

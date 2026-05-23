@@ -77,9 +77,9 @@ void initramfs_init(void) {
 int initramfs_find(const char* path, const uint8_t** data, uint32_t* size) {
     uintptr_t start = (uintptr_t)_initramfs_start;
     uintptr_t end = (uintptr_t)_initramfs_end;
-    if (!path || !data || !size || end <= start) {
-        *data = NULL;
-        *size = 0;
+    if (!path || end <= start) {
+        if (data) *data = NULL;
+        if (size) *size = 0;
         return -1;
     }
 
@@ -105,13 +105,13 @@ int initramfs_find(const char* path, const uint8_t** data, uint32_t* size) {
             break;
         if (name_matches_exec_path(path, name, namesz)) {
             const uint8_t* filedata = h + head + namepad;
-            *data = filedata;
-            *size = filesz;
+            if (data) *data = filedata;
+            if (size) *size = filesz;
             return 0;
         }
         off += head + namepad + filepad;
     }
-    *data = NULL;
-    *size = 0;
+    if (data) *data = NULL;
+    if (size) *size = 0;
     return -1;
 }

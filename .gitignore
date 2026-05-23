@@ -1,3 +1,15 @@
 disk.img
 partition.fat
 build/
+
+# Kconfig generated files
+.config
+.config.old
+.tmpconfig
+.tmpconfig.h
+.tmpconfig_tristate
+include/config/auto.conf
+include/config/auto.conf.cmd
+include/config/tristate.conf
+include/config/*.h
+include/generated/

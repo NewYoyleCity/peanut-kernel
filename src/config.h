@@ -1,3 +1,7 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#define CONFIG_PRINTK y
 #define CONFIG_KERNEL_NAME "Peanut Kernel"
 #define CONFIG_KERNEL_VERSION "0.0.1-alpha"
 #define CONFIG_INIT_PATH "/sbin/init"
@@ -34,8 +38,5 @@
 #define CONFIG_NETWORK_SYSCALLS y
 #define CONFIG_DNS_RESOLVER y
 #define CONFIG_ELF_LOADER y
-#define CONFIG_KASLR y
-#define CONFIG_NET_TCP_IP y
-#define CONFIG_NET_E1000 y
-#define CONFIG_NETWORK_SYSCALLS y
-#define CONFIG_DNS_RESOLVER y
+
+#endif

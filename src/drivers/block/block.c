@@ -1,7 +1,7 @@
 #include "drivers/block/block.h"
 #include "cpu/spinlock.h"
 
-static spinlock_t block_lock;
+static spinlock_t block_lock = { .v = 0 };
 
 int block_read(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer) {
     if (!dev || !dev->read || !buffer || count == 0) return -1;
