@@ -1,3 +1,9 @@
+/* ps2.c -- PS/2 keyboard and mouse driver.
+ *
+ * Initialises the PS/2 controller, enables the mouse port, and provides
+ * non-blocking polling for keyboard scancodes and mouse packets.
+ */
+
 #include "freelib/kstdint.h"
 #include "drivers/input/ps2.h"
 
@@ -5,29 +11,41 @@
 #define PS2_STATUS_PORT 0x64
 #define PS2_CMD_PORT 0x64
 
-static inline uint8_t inb(uint16_t port) {
+
+/* inb -- read a byte from an I/O port.
+ */static inline uint8_t inb(uint16_t port) {
     uint8_t ret;
     __asm__ volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
     return ret;
 }
 
-static inline void outb(uint16_t port, uint8_t value) {
+
+/* outb -- write a byte to an I/O port.
+ */static inline void outb(uint16_t port, uint8_t value) {
     __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));
 }
 
-static int ps2_data_ready(void) {
+
+/* ps2_data_ready -- check output-buffer full flag.
+ */static int ps2_data_ready(void) {
     return (inb(PS2_STATUS_PORT) & 1) != 0;
 }
 
-static int ps2_output_is_mouse(void) {
+
+/* ps2_output_is_mouse -- check if output data is from the mouse (bit 5 of status).
+ */static int ps2_output_is_mouse(void) {
     return (inb(PS2_STATUS_PORT) & 0x20) != 0;
 }
 
-static void ps2_wait_input_clear(void) {
+
+/* ps2_wait_input_clear -- wait for input-buffer empty.
+ */static void ps2_wait_input_clear(void) {
     for (uint32_t i = 0; i < 100000 && (inb(PS2_STATUS_PORT) & 2); i++) {}
 }
 
-static char scancode_to_char(uint8_t scancode) {
+
+/* scancode_to_char -- translate a PS/2 scancode to an ASCII character.
+ */static char scancode_to_char(uint8_t scancode) {
     static const char map[] = {
         0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0, 0,
         'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n', 0,

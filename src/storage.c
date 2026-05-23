@@ -1,3 +1,18 @@
+/* storage.c -- Root-volume discovery, filesystem mounting, and FHS validation.
+ *
+ * This file ties block-device drivers (IDE, AHCI) to filesystem drivers
+ * (FAT32, exFAT, ext2/3/4).  It iterates over available drives, scans
+ * their partition tables, tries each supported filesystem in order, and
+ * validates that the selected root volume follows a minimal FHS layout
+ * (/BOOT, /BIN, /USR, /LIB).
+ *
+ * Design decisions:
+ *   - FAT32 is tried first because it is the most common bootable format;
+ *     exFAT and ext* are fallbacks enabled by CONFIG_FS_* macros.
+ *   - If MBR partition scanning yields no partitions, the whole disk is
+ *     treated as a single partition (superfloppy format).
+ *   - The FHS check is case-insensitive for FAT-based volumes. */
+
 #include "storage.h"
 #include "config.h"
 #include "freelib/kstdio.h"
@@ -21,18 +36,25 @@
 static PeanutVolume root_volume;
 static int root_mounted = 0;
 
+
+/* storage_get_root_volume -- return the root PeanutVolume or NULL if not mounted.
+ */
 PeanutVolume* storage_get_root_volume() {
     return root_mounted ? &root_volume : NULL;
 }
 
-static int fhs_dir_exists_fat32(Fat32Volume* volume, const char* name) {
+
+/* fhs_dir_exists_fat32 -- check if a directory exists in the FAT32 root.
+ */static int fhs_dir_exists_fat32(Fat32Volume* volume, const char* name) {
     Fat32DirEntry entry;
     if (fat32_find_root(volume, name, &entry) != 0)
         return 0;
     return (entry.attributes & FAT32_ATTR_DIRECTORY) != 0;
 }
 
-static int fhs_dir_exists_ext(ExtVolume* v, const char* name) {
+
+/* fhs_dir_exists_ext -- check if a directory exists on an ext volume.
+ */static int fhs_dir_exists_ext(ExtVolume* v, const char* name) {
     char p[16];
     uint32_t i = 0;
     if (i + 1 >= sizeof(p)) return 0;
@@ -44,7 +66,9 @@ static int fhs_dir_exists_ext(ExtVolume* v, const char* name) {
     return extfs_dir_exists(v, p);
 }
 
-static int validate_fhs(PeanutVolume* pv) {
+
+/* validate_fhs -- verify the presence of /BOOT, /BIN, /USR, /LIB.
+ */static int validate_fhs(PeanutVolume* pv) {
     if (pv->fs_kind == PEANUT_FS_EXFAT) {
         return exfat_dir_exists(&pv->exfat, "BOOT") &&
                exfat_dir_exists(&pv->exfat, "BIN") &&
@@ -63,7 +87,9 @@ static int validate_fhs(PeanutVolume* pv) {
            fhs_dir_exists_fat32(&pv->fat32, "LIB");
 }
 
-static int mount_first_fs(BlockDevice* dev, PeanutVolume* out) {
+
+/* mount_first_fs -- try FAT32, exFAT, ext* on a block device.
+ */static int mount_first_fs(BlockDevice* dev, PeanutVolume* out) {
     Partition partitions[PARTITION_MAX];
     int count = partition_scan_mbr(dev, partitions, PARTITION_MAX);
 
@@ -109,6 +135,9 @@ static int mount_first_fs(BlockDevice* dev, PeanutVolume* out) {
     return 0;
 }
 
+
+/* storage_init_required -- probe IDE/AHCI drives, mount root volume, validate FHS.
+ */
 void storage_init_required() {
     kprint("Setting up filesystems on block devices...\n");
 

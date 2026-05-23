@@ -1,3 +1,16 @@
+/* idt.c -- Interrupt Descriptor Table setup for x86-64.
+ *
+ * Initialises a full 256-entry IDT.  All entries default to a handler that
+ * panics; specific entries are overridden for CPU exceptions (#UD, #GP, #PF)
+ * and for IRQ 0 (timer, hooked later by idt_set_handler).
+ *
+ * Design decisions:
+ *   - KERNEL_CODE_SELECTOR is 0x08 (GDT entry 1, ring 0 code).
+ *   - Interrupt-gate attributes (0x8E) disable further interrupts in the
+ *     handler, which is appropriate for exception handlers.
+ *   - idt_set_handler() is a public API used by the scheduler to wire
+ *     the PIT (IRQ 0 → vector 32) after the PIC has been remapped. */
+
 #include "cpu/idt.h"
 #include "freelib/kpanic.h"
 #include "freelib/kstdio.h"
@@ -30,7 +43,9 @@ extern void isr_invalid_opcode(void);
 extern void isr_general_protection(void);
 extern void isr_page_fault(void);
 
-static void idt_set_gate(uint8_t vector, void (*handler)(void)) {
+
+/* idt_set_gate -- write an interrupt-gate descriptor into the IDT.
+ */static void idt_set_gate(uint8_t vector, void (*handler)(void)) {
     uint64_t offset = (uint64_t)handler;
 
     idt[vector].offset_low = offset & 0xFFFF;
@@ -42,6 +57,9 @@ static void idt_set_gate(uint8_t vector, void (*handler)(void)) {
     idt[vector].zero = 0;
 }
 
+
+/* idt_init -- fill 256 IDT entries with default handler; set exception gates; load IDTR.
+ */
 void idt_init(void) {
     for (uint16_t vector = 0; vector < IDT_ENTRIES; vector++) {
         idt_set_gate((uint8_t)vector, interrupt_default_entry);
@@ -56,14 +74,23 @@ void idt_init(void) {
     __asm__ volatile("lidt %0" : : "m"(idt_ptr) : "memory");
 }
 
+
+/* idt_set_handler -- override an IDT entry at a given vector (used for IRQ wiring).
+ */
 void idt_set_handler(uint8_t vector, void (*handler)(void)) {
     idt_set_gate(vector, handler);
 }
 
+
+/* interrupt_default_handler -- unhandled interrupt / exception: panic.
+ */
 void interrupt_default_handler(void) {
     kpanic("[Peanut kernel - panic - Unhandled CPU exception or interrupt]");
 }
 
+
+/* cpu_exception_handler -- log CPU exception details and panic.
+ */
 void cpu_exception_handler(uint64_t vector, uint64_t error, uint64_t rip) {
     kprint("CPU exception vector ");
     kprint_int(vector);

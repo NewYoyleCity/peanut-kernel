@@ -1,3 +1,10 @@
+/* e1000.c -- Intel PRO/1000 (e1000) network driver.
+ *
+ * Probes for supported Intel Gigabit Ethernet adapters, allocates
+ * RX/TX descriptor rings, reads the MAC address from the controller,
+ * and provides send/receive functions.
+ */
+
 #include "e1000.h"
 #include "net.h"
 #include "freelib/kstdio.h"
@@ -76,20 +83,26 @@ static uint8_t *rx_buffers = NULL;
 static uint8_t *tx_buffers = NULL;
 static net_device_t e1000_dev;
 
-static uint32_t e1000_read_reg(uint16_t reg) {
+
+/* e1000_read_reg -- read an e1000 MMIO register.
+ */static uint32_t e1000_read_reg(uint16_t reg) {
     if (e1000_mmio) {
         return e1000_mmio[reg / 4];
     }
     return 0;
 }
 
-static void e1000_write_reg(uint16_t reg, uint32_t value) {
+
+/* e1000_write_reg -- write an e1000 MMIO register.
+ */static void e1000_write_reg(uint16_t reg, uint32_t value) {
     if (e1000_mmio) {
         e1000_mmio[reg / 4] = value;
     }
 }
 
-static void e1000_eeprom_read(uint16_t addr, uint16_t *data) {
+
+/* e1000_eeprom_read -- read a word from the e1000 EEPROM.
+ */static void e1000_eeprom_read(uint16_t addr, uint16_t *data) {
     e1000_write_reg(E1000_REG_EERD, (addr << 8) | 1);
     while (!(e1000_read_reg(E1000_REG_EERD) & (1 << 4)));
     *data = (uint16_t)(e1000_read_reg(E1000_REG_EERD) >> 16);
@@ -145,7 +158,9 @@ void e1000_recv(net_device_t *dev, void (*callback)(uint8_t *data, uint32_t len)
     }
 }
 
-static void e1000_name(void) {
+
+/* e1000_name -- set the device name to "e1000".
+ */static void e1000_name(void) {
     e1000_dev.name[0] = 'e';
     e1000_dev.name[1] = '1';
     e1000_dev.name[2] = '0';
@@ -154,7 +169,9 @@ static void e1000_name(void) {
     e1000_dev.name[5] = '\0';
 }
 
-static int e1000_find(PciAddress* out) {
+
+/* e1000_find -- locate an e1000 device on PCI by known device IDs.
+ */static int e1000_find(PciAddress* out) {
     static const uint16_t ids[] = {
         0x100E, 0x100F, 0x1010, 0x1011, 0x1012, 0x1013, 0x1015, 0x1016,
         0x1017, 0x1018, 0x1019, 0x101A, 0x101D, 0x1026, 0x1027, 0x1028,

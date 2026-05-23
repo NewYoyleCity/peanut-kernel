@@ -1,3 +1,9 @@
+/* psf_font.c -- PC Screen Font (PSF) loader.
+ *
+ * Reads an embedded PSFv1/PSFv2 font from a linker symbol and fills
+ * a PsfFont struct for use by the framebuffer console.
+ */
+
 #include "drivers/video/psf_font.h"
 
 extern const uint8_t _binary_src_fonts_terminal_psf_start[];

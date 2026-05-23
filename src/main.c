@@ -1,3 +1,25 @@
+/* main.c -- Peanut kernel entry point (kmain) and top-level initialization.
+ *
+ * This file contains kmain(), the C entry point reached from the boot
+ * assembly stub.  It is responsible for bringing up every kernel subsystem
+ * in dependency order: virtual memory, slab allocator, heap, GDT/IDT,
+ * syscall infrastructure, PIC/PIT timers, the scheduler, VFS, filesystems,
+ * storage, and finally loading and launching the init process.
+ *
+ * Subsystem init order is carefully chosen (e.g. vm_init before kalloc_init
+ * because the heap needs page tables; slab before kalloc since the slab
+ * allocator provides small-object caching for the heap).
+ *
+ * Author/design notes:
+ *   - kmain accepts both a Multiboot2 info structure and a KASLR offset
+ *     (the latter is currently unused on the direct-boot path).
+ *   - Hardware drivers (PS/2, xHCI, HDMI, ATA, NICs, audio) are guarded
+ *     by CONFIG_* macros so the kernel can be built for minimal targets.
+ *   - The "Maintainer Mental Stability" option inserts a 10-second pause
+ *     filled with pointless stack writes to shake out latent bugs.
+ *   - If no FAT32 / exFAT / ext root volume is found, or if no init binary
+ *     can be loaded, kmain calls kpanic() with a descriptive message. */
+
 #include "freelib/kstdio.h"
 #include "freelib/kstdint.h"
 #include "freelib/kalloc.h"
@@ -69,6 +91,18 @@ int usb_kbd_init(void);
 #ifdef CONFIG_AUDIO_HDA
 #include "drivers/audio/hda.h"
 #endif
+#ifdef CONFIG_AUDIO_SB16
+#include "drivers/audio/sb16.h"
+#endif
+#ifdef CONFIG_AUDIO_PCSPKR
+#include "drivers/audio/pcspkr.h"
+#endif
+#ifdef CONFIG_ACPI
+#include "drivers/acpi.h"
+#endif
+#ifdef CONFIG_PAGE_POISON
+#include "mm/vm.h"
+#endif
 
 #ifdef CONFIG_STORAGE_NVME
 #include "drivers/block/nvme.h"
@@ -81,6 +115,17 @@ int usb_kbd_init(void);
 void gdt_init_for_user();
 void tss_init();
 void irq_timer(void);
+
+/* kmain -- kernel C entry point.
+ *
+ * Initialises all core subsystems in order, then probes storage and loads
+ * the init process via ELF loader.  Never returns -- either user-space
+ * init runs (which eventually calls SYS_EXIT, caught by the "kill init"
+ * panic), or a kpanic() is raised.
+ *
+ * @param multiboot_info  Physical address of the Multiboot2 information
+ *                        structure passed by the bootloader.
+ * @param kaslr_offset    KASLR slide (unused in the direct-boot path). */
 void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
     (void)kaslr_offset;
     if (fb_init_direct() != 0)
@@ -180,6 +225,28 @@ void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
 
 #ifdef CONFIG_AUDIO_HDA
     hda_init();
+#endif
+#ifdef CONFIG_AUDIO_SB16
+    sb16_init();
+#endif
+#ifdef CONFIG_AUDIO_PCSPKR
+    pcspkr_init();
+#endif
+#ifdef CONFIG_ACPI
+    acpi_init();
+#endif
+#ifdef CONFIG_PAGE_POISON
+    {
+        for (uint32_t pp_i = 0; pp_i < 256; pp_i++) {
+            void *pp_page = vm_alloc_page();
+            if (pp_page) {
+                uint8_t *pp_b = (uint8_t *)pp_page;
+                for (uint32_t pp_j = 0; pp_j < 4096; pp_j++)
+                    pp_b[pp_j] = 0xCC;
+            }
+        }
+    }
+    kprint_timed("Page poison: 256 pages poisoned with 0xCC\n");
 #endif
 
     storage_init_required();

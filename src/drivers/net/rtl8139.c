@@ -1,3 +1,9 @@
+/* rtl8139.c -- Realtek RTL8139 Fast Ethernet driver.
+ *
+ * Uses PIO to control the RTL8139: initialises the NIC, sets up RX/TX
+ * buffers, reads the MAC address, and implements send/receive.
+ */
+
 #include "rtl8139.h"
 #include "net.h"
 #include "drivers/bus/io.h"
@@ -31,14 +37,23 @@ static uint32_t rtl_tx_cur;
 static uint32_t rtl_rx_cur;
 static net_device_t rtl_dev;
 
-static uint8_t rtl_read8(uint16_t reg) { return inb(rtl_io + reg); }
-static uint16_t rtl_read16(uint16_t reg) { return inw(rtl_io + reg); }
-static uint32_t rtl_read32(uint16_t reg) { return inl(rtl_io + reg); }
-static void rtl_write8(uint16_t reg, uint8_t v) { outb(rtl_io + reg, v); }
-static void rtl_write16(uint16_t reg, uint16_t v) { outw(rtl_io + reg, v); }
-static void rtl_write32(uint16_t reg, uint32_t v) { outl(rtl_io + reg, v); }
 
-static void rtl_name(void) {
+/* rtl_read8 -- read 8-bit from RTL8139 I/O register.
+ */static uint8_t rtl_read8(uint16_t reg) { return inb(rtl_io + reg); }
+/* rtl_read16 -- read 16-bit from RTL8139 I/O register.
+ */static uint16_t rtl_read16(uint16_t reg) { return inw(rtl_io + reg); }
+/* rtl_read32 -- read 32-bit from RTL8139 I/O register.
+ */static uint32_t rtl_read32(uint16_t reg) { return inl(rtl_io + reg); }
+/* rtl_write8 -- write 8-bit to RTL8139 I/O register.
+ */static void rtl_write8(uint16_t reg, uint8_t v) { outb(rtl_io + reg, v); }
+/* rtl_write16 -- write 16-bit to RTL8139 I/O register.
+ */static void rtl_write16(uint16_t reg, uint16_t v) { outw(rtl_io + reg, v); }
+/* rtl_write32 -- write 32-bit to RTL8139 I/O register.
+ */static void rtl_write32(uint16_t reg, uint32_t v) { outl(rtl_io + reg, v); }
+
+
+/* rtl_name -- set device name to "rtl8139".
+ */static void rtl_name(void) {
     rtl_dev.name[0] = 'r';
     rtl_dev.name[1] = 't';
     rtl_dev.name[2] = 'l';

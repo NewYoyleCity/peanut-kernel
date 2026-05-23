@@ -1,3 +1,9 @@
+/* wifi.c -- Wireless adapter detection (stub).
+ *
+ * Scans the PCI bus for known Wi-Fi adapters (Intel, Realtek, Ralink,
+ * Atheros, Broadcom) and prints a discovery message.
+ */
+
 #include "drivers/net/wifi.h"
 #include "drivers/bus/pci.h"
 #include "freelib/kstdio.h"

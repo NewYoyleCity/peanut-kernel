@@ -1,3 +1,10 @@
+/* fat32.c -- FAT12/16/32 filesystem driver.
+ *
+ * Supports reading and (conditionally) writing files on FAT volumes.
+ * Handles Long File Name (LFN) entries, cluster chains, and the
+ * three FAT variants.  All path lookups are case-insensitive.
+ */
+
 #include "fs/fat32.h"
 #include "config.h"
 
@@ -6,18 +13,24 @@
 #define FAT16_EOC 0xFFF8
 #define FAT32_EOC 0x0FFFFFF8
 
-static uint16_t le16(const uint8_t* p) {
+
+/* le16 -- read little-endian 16-bit integer.
+ */static uint16_t le16(const uint8_t* p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
-static uint32_t le32(const uint8_t* p) {
+
+/* le32 -- read little-endian 32-bit integer.
+ */static uint32_t le32(const uint8_t* p) {
     return (uint32_t)p[0] |
         ((uint32_t)p[1] << 8) |
         ((uint32_t)p[2] << 16) |
         ((uint32_t)p[3] << 24);
 }
 
-static int streq(const char* a, const char* b) {
+
+/* streq -- exact string comparison.
+ */static int streq(const char* a, const char* b) {
     uint32_t i = 0;
     while (a[i] && b[i]) {
         if (a[i] != b[i]) return 0;
@@ -26,11 +39,15 @@ static int streq(const char* a, const char* b) {
     return a[i] == b[i];
 }
 
-static char upper_ascii(char c) {
+
+/* upper_ascii -- convert lowercase ASCII to uppercase.
+ */static char upper_ascii(char c) {
     return (c >= 'a' && c <= 'z') ? (char)(c - 32) : c;
 }
 
-static int streq_ci(const char* a, const char* b) {
+
+/* streq_ci -- case-insensitive string comparison.
+ */static int streq_ci(const char* a, const char* b) {
     uint32_t i = 0;
     while (a[i] && b[i]) {
         if (upper_ascii(a[i]) != upper_ascii(b[i])) return 0;
@@ -39,7 +56,9 @@ static int streq_ci(const char* a, const char* b) {
     return a[i] == b[i];
 }
 
-static void copy_name(char* dst, const char* src, uint32_t cap) {
+
+/* copy_name -- bounded string copy for directory entry names.
+ */static void copy_name(char* dst, const char* src, uint32_t cap) {
     uint32_t i = 0;
     if (cap == 0) return;
     while (i + 1 < cap && src[i]) {
@@ -49,12 +68,16 @@ static void copy_name(char* dst, const char* src, uint32_t cap) {
     dst[i] = '\0';
 }
 
-static uint32_t cluster_lba(Fat32Volume* volume, uint32_t cluster) {
+
+/* cluster_lba -- compute the first LBA of a FAT cluster.
+ */static uint32_t cluster_lba(Fat32Volume* volume, uint32_t cluster) {
     return volume->data_start_lba +
         (cluster - 2) * volume->sectors_per_cluster;
 }
 
-static int read_cluster(Fat32Volume* volume, uint32_t cluster, uint8_t* buffer) {
+
+/* read_cluster -- read a full cluster into buffer.
+ */static int read_cluster(Fat32Volume* volume, uint32_t cluster, uint8_t* buffer) {
     
     return block_read(volume->partition.disk,
         cluster_lba(volume, cluster),
@@ -62,7 +85,9 @@ static int read_cluster(Fat32Volume* volume, uint32_t cluster, uint8_t* buffer) 
         buffer);
 }
 
-static uint32_t next_cluster(Fat32Volume* volume, uint32_t cluster) {
+
+/* next_cluster -- follow the FAT to the next cluster in the chain.
+ */static uint32_t next_cluster(Fat32Volume* volume, uint32_t cluster) {
     uint8_t sector[BLOCK_SECTOR_SIZE];
     uint32_t fat_offset;
     if (volume->fat_type == PEANUT_FAT12)
@@ -104,7 +129,9 @@ static uint32_t next_cluster(Fat32Volume* volume, uint32_t cluster) {
     return (le32(sector + entry_offset) & 0x0FFFFFFF);
 }
 
-static int write_cluster(Fat32Volume* volume, uint32_t cluster, const uint8_t* buffer) {
+
+/* write_cluster -- write a full cluster from buffer to disk.
+ */static int write_cluster(Fat32Volume* volume, uint32_t cluster, const uint8_t* buffer) {
     
     return block_write(volume->partition.disk,
         cluster_lba(volume, cluster),
@@ -112,7 +139,9 @@ static int write_cluster(Fat32Volume* volume, uint32_t cluster, const uint8_t* b
         buffer);
 }
 
-static void make_short_name(const uint8_t* raw, char* out) {
+
+/* make_short_name -- decode an 8.3 short filename from raw directory entry.
+ */static void make_short_name(const uint8_t* raw, char* out) {
     uint32_t out_i = 0;
 
     for (uint32_t i = 0; i < 8 && raw[i] != ' '; i++) {
@@ -129,7 +158,9 @@ static void make_short_name(const uint8_t* raw, char* out) {
     out[out_i] = '\0';
 }
 
-static int parse_entry(const uint8_t* raw, Fat32DirEntry* out) {
+
+/* parse_entry -- parse a single FAT directory entry (skip LFN and deleted).
+ */static int parse_entry(const uint8_t* raw, Fat32DirEntry* out) {
     if (raw[0] == 0x00) return 0;
     if (raw[0] == 0xE5) return -1;
     if ((raw[11] & FAT32_ATTR_LONG_NAME) == FAT32_ATTR_LONG_NAME) return -1;
@@ -141,11 +172,15 @@ static int parse_entry(const uint8_t* raw, Fat32DirEntry* out) {
     return 1;
 }
 
-static void clear_lfn(char* lfn) {
+
+/* clear_lfn -- reset the Long File Name accumulator.
+ */static void clear_lfn(char* lfn) {
     lfn[0] = '\0';
 }
 
-static void parse_lfn_entry(const uint8_t* raw, char* lfn, uint32_t lfn_size) {
+
+/* parse_lfn_entry -- decode one LFN entry and append to accumulator.
+ */static void parse_lfn_entry(const uint8_t* raw, char* lfn, uint32_t lfn_size) {
     static const uint8_t offsets[13] = {
         1, 3, 5, 7, 9,
         14, 16, 18, 20, 22, 24,
@@ -311,7 +346,9 @@ int fat32_find_dir_in_root(Fat32Volume* volume, const char* dirname, Fat32DirEnt
     return -1;
 }
 
-static uint32_t list_cluster_entries(Fat32Volume* volume, uint32_t cluster, Fat32DirEntry* entries, uint32_t max_entries) {
+
+/* list_cluster_entries -- enumerate entries in a directory cluster chain.
+ */static uint32_t list_cluster_entries(Fat32Volume* volume, uint32_t cluster, Fat32DirEntry* entries, uint32_t max_entries) {
     uint8_t cluster_buffer[BLOCK_SECTOR_SIZE * 8];
     uint32_t count = 0;
 

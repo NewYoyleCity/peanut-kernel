@@ -1,3 +1,10 @@
+/* virtio_net.c -- VirtIO network device driver (legacy + modern).
+ *
+ * Implements a virtio-net driver using PCI capabilities to locate
+ * common/notify/device config regions.  Uses two virtqueues (TX/RX)
+ * with pre-allocated buffer pools.
+ */
+
 #include "virtio_net.h"
 #include "net.h"
 #include "drivers/bus/pci.h"
@@ -101,7 +108,9 @@ static void virtio_write32(uint16_t reg, uint32_t val) {
     if (virtio_mmio) virtio_mmio[reg / 4] = val;
 }
 
-static void virtio_dev_name(void) {
+
+/* virtio_dev_name -- set device name to "virtio".
+ */static void virtio_dev_name(void) {
     virtio_dev.name[0] = 'v';
     virtio_dev.name[1] = 'i';
     virtio_dev.name[2] = 'r';
@@ -111,7 +120,9 @@ static void virtio_dev_name(void) {
     virtio_dev.name[6] = '\0';
 }
 
-static void virtqueue_notify(virtqueue *vq, uint16_t idx) {
+
+/* virtqueue_notify -- notify the device about new available descriptors.
+ */static void virtqueue_notify(virtqueue *vq, uint16_t idx) {
     uint32_t off = (uint32_t)notify_off_multiplier * idx;
     *(volatile uint16_t *)(notify + off) = idx;
 }
@@ -168,7 +179,9 @@ static void virtio_net_recv(net_device_t *dev, void (*callback)(uint8_t *data, u
     }
 }
 
-static int virtio_net_find_pci(PciAddress *out) {
+
+/* virtio_net_find_pci -- locate a virtio-net device on PCI.
+ */static int virtio_net_find_pci(PciAddress *out) {
     if (pci_find_device(0x1AF4, 0x1000, out) == 0) return 0;
     if (pci_find_device(0x1AF4, 0x1041, out) == 0) return 0;
     return -1;

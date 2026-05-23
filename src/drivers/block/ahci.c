@@ -1,3 +1,9 @@
+/* ahci.c -- AHCI SATA disk driver.
+ *
+ * Locates the AHCI controller via PCI, initialises HBAs, probes ports
+ * for connected SATA devices, and performs DMA-based read/write.
+ */
+
 #include "drivers/block/ahci.h"
 #include "drivers/bus/pci.h"
 
@@ -123,12 +129,16 @@ static AhciPortData ahci_ports[AHCI_MAX_DEVICES];
 static BlockDevice ahci_devices[AHCI_MAX_DEVICES];
 static uint32_t ahci_count = 0;
 
-static void memzero(void* ptr, uint32_t len) {
+
+/* memzero -- fill a memory region with zeroes.
+ */static void memzero(void* ptr, uint32_t len) {
     uint8_t* bytes = (uint8_t*)ptr;
     for (uint32_t i = 0; i < len; i++) bytes[i] = 0;
 }
 
-static void stop_port(HbaPort* port) {
+
+/* stop_port -- stop an AHCI port (clear ST and FRE, wait for FR/CR to clear).
+ */static void stop_port(HbaPort* port) {
     port->cmd &= ~HBA_PxCMD_ST;
     port->cmd &= ~HBA_PxCMD_FRE;
 
@@ -137,13 +147,17 @@ static void stop_port(HbaPort* port) {
     }
 }
 
-static void start_port(HbaPort* port) {
+
+/* start_port -- start an AHCI port (set FRE then ST).
+ */static void start_port(HbaPort* port) {
     while (port->cmd & HBA_PxCMD_CR) {}
     port->cmd |= HBA_PxCMD_FRE;
     port->cmd |= HBA_PxCMD_ST;
 }
 
-static int port_is_sata(HbaPort* port) {
+
+/* port_is_sata -- check if AHCI port has an ATA device present and active.
+ */static int port_is_sata(HbaPort* port) {
     uint32_t ssts = port->ssts;
     uint8_t det = ssts & 0x0F;
     uint8_t ipm = (ssts >> 8) & 0x0F;
@@ -152,7 +166,9 @@ static int port_is_sata(HbaPort* port) {
         port->sig == SATA_SIG_ATA;
 }
 
-static int ahci_transfer(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer, uint8_t write) {
+
+/* ahci_transfer -- DMA read or write via AHCI command list.
+ */static int ahci_transfer(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer, uint8_t write) {
     AhciPortData* pd = (AhciPortData*)dev->driver_data;
     HbaPort* port = pd->port;
 

@@ -1,3 +1,9 @@
+/* hdmi.c -- HDMI/display adapter detection.
+ *
+ * Probes the PCI bus for VGA-compatible display controllers and
+ * HD-audio functions.  Exposes a status string via /sys/devices/hdmi.
+ */
+
 #include "drivers/video/hdmi.h"
 #include "drivers/bus/pci.h"
 #include "freelib/kstdio.h"

@@ -1,3 +1,9 @@
+/* inflate.c -- DEFLATE decompressor (RFC 1951).
+ *
+ * Minimal, standalone inflate implementation supporting stored, fixed
+ * Huffman, and dynamic Huffman blocks.
+ */
+
 #include "lib/inflate.h"
 
 struct BitState {
@@ -8,7 +14,9 @@ struct BitState {
     uint32_t bitcnt;
 };
 
-static int bits_needed(struct BitState* s, uint32_t n) {
+
+/* bits_needed -- ensure at least n bits are available in the bit buffer.
+ */static int bits_needed(struct BitState* s, uint32_t n) {
     while (s->bitcnt < n) {
         if (s->in_off >= s->in_len) return -1;
         s->bitbuf |= (uint32_t)s->in[s->in_off++] << s->bitcnt;
@@ -17,14 +25,18 @@ static int bits_needed(struct BitState* s, uint32_t n) {
     return 0;
 }
 
-static uint32_t bits_get(struct BitState* s, uint32_t n) {
+
+/* bits_get -- consume and return n bits from the bit buffer.
+ */static uint32_t bits_get(struct BitState* s, uint32_t n) {
     uint32_t val = s->bitbuf & ((1u << n) - 1);
     s->bitbuf >>= n;
     s->bitcnt -= n;
     return val;
 }
 
-static void bits_skip_to_byte(struct BitState* s) {
+
+/* bits_skip_to_byte -- discard bits to align to a byte boundary.
+ */static void bits_skip_to_byte(struct BitState* s) {
     uint32_t skip = s->bitcnt & 7;
     if (skip) {
         s->bitbuf >>= skip;
@@ -38,7 +50,9 @@ struct HuffTable {
     uint16_t max_bits;
 };
 
-static int huff_build(struct HuffTable* t, const uint16_t* lens, uint32_t num_syms) {
+
+/* huff_build -- construct a canonical Huffman decoding table from code lengths.
+ */static int huff_build(struct HuffTable* t, const uint16_t* lens, uint32_t num_syms) {
     uint32_t max = 0;
     for (uint32_t i = 0; i < num_syms; i++)
         if (lens[i] > max) max = lens[i];
@@ -61,7 +75,9 @@ static int huff_build(struct HuffTable* t, const uint16_t* lens, uint32_t num_sy
     return 0;
 }
 
-static int huff_decode(struct BitState* s, struct HuffTable* t) {
+
+/* huff_decode -- decode one symbol using the Huffman table.
+ */static int huff_decode(struct BitState* s, struct HuffTable* t) {
     uint32_t code = 0;
     uint32_t first = 0;
     uint32_t index = 0;
@@ -77,7 +93,9 @@ static int huff_decode(struct BitState* s, struct HuffTable* t) {
     return -1;
 }
 
-static int decode_dist(struct BitState* s, struct HuffTable* dt) {
+
+/* decode_dist -- decode a distance value (base + extra bits).
+ */static int decode_dist(struct BitState* s, struct HuffTable* dt) {
     int sym = huff_decode(s, dt);
     if (sym < 0) return -1;
     static const uint32_t extra[] = {
@@ -99,7 +117,9 @@ static int decode_dist(struct BitState* s, struct HuffTable* dt) {
     return (int)d;
 }
 
-static int inflate_block(struct BitState* s, uint8_t* out, uint32_t out_len, uint32_t* written) {
+
+/* inflate_block -- decompress one DEFLATE block (stored, fixed, or dynamic).
+ */static int inflate_block(struct BitState* s, uint8_t* out, uint32_t out_len, uint32_t* written) {
     if (bits_needed(s, 3) != 0) return -1;
     uint32_t bfinal = bits_get(s, 1);
     uint32_t btype = bits_get(s, 2);

@@ -1,3 +1,10 @@
+/* ide.c -- PATA/IDE ATA disk driver.
+ *
+ * Probes primary and secondary IDE channels for master/slave drives
+ * using the ATA IDENTIFY command.  Implements PIO read/write with
+ * LBA28 addressing.
+ */
+
 #include "drivers/block/ide.h"
 #include "drivers/bus/io.h"
 
@@ -31,14 +38,18 @@ static IdeDeviceData ide_data[IDE_MAX_DEVICES];
 static BlockDevice ide_devices[IDE_MAX_DEVICES];
 static uint32_t ide_devices_found = 0;
 
-static void ide_delay(IdeDeviceData* ide) {
+
+/* ide_delay -- short I/O delay (4 INBs from the control port).
+ */static void ide_delay(IdeDeviceData* ide) {
     inb(ide->ctrl_base);
     inb(ide->ctrl_base);
     inb(ide->ctrl_base);
     inb(ide->ctrl_base);
 }
 
-static int ide_wait(IdeDeviceData* ide, uint8_t want_drq) {
+
+/* ide_wait -- wait for BSY to clear and optionally DRQ to set.
+ */static int ide_wait(IdeDeviceData* ide, uint8_t want_drq) {
     for (uint32_t i = 0; i < 100000; i++) {
         uint8_t status = inb(ide->io_base + ATA_REG_STATUS);
         if (status & ATA_SR_ERR) return -1;
@@ -50,7 +61,9 @@ static int ide_wait(IdeDeviceData* ide, uint8_t want_drq) {
     return -1;
 }
 
-static int ide_identify(IdeDeviceData* ide, uint16_t* identify) {
+
+/* ide_identify -- send ATA IDENTIFY command to a device.
+ */static int ide_identify(IdeDeviceData* ide, uint16_t* identify) {
     outb(ide->io_base + ATA_REG_HDDEVSEL, (uint8_t)(0xA0 | (ide->slave << 4)));
     ide_delay(ide);
     outb(ide->io_base + ATA_REG_SECCOUNT0, 0);
@@ -68,7 +81,9 @@ static int ide_identify(IdeDeviceData* ide, uint16_t* identify) {
     return 0;
 }
 
-static int ide_read(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer) {
+
+/* ide_read -- PIO read sectors (LBA28).
+ */static int ide_read(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer) {
     IdeDeviceData* ide = (IdeDeviceData*)dev->driver_data;
     uint8_t* out = (uint8_t*)buffer;
 
@@ -93,7 +108,9 @@ static int ide_read(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer
     return 0;
 }
 
-static int ide_write(BlockDevice* dev, uint64_t lba, uint32_t count, const void* buffer) {
+
+/* ide_write -- PIO write sectors (LBA28) with cache flush.
+ */static int ide_write(BlockDevice* dev, uint64_t lba, uint32_t count, const void* buffer) {
     IdeDeviceData* ide = (IdeDeviceData*)dev->driver_data;
     const uint8_t* in = (const uint8_t*)buffer;
 

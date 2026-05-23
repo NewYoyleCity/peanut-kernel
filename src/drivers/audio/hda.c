@@ -1,3 +1,9 @@
+/* hda.c -- Intel High Definition Audio controller driver.
+ *
+ * Initialises the HDA controller: resets the hardware, allocates CORB
+ * and RIRB DMA buffers, and starts the command/response engine.
+ */
+
 #include "hda.h"
 #include "drivers/bus/pci.h"
 #include "freelib/kstdio.h"
@@ -21,23 +27,33 @@
 
 static volatile uint8_t* hda_mmio;
 
-static uint16_t hda_read16(uint16_t reg) {
+
+/* hda_read16 -- read 16-bit from HDA MMIO.
+ */static uint16_t hda_read16(uint16_t reg) {
     return *(volatile uint16_t*)(hda_mmio + reg);
 }
 
-static uint32_t hda_read32(uint16_t reg) {
+
+/* hda_read32 -- read 32-bit from HDA MMIO.
+ */static uint32_t hda_read32(uint16_t reg) {
     return *(volatile uint32_t*)(hda_mmio + reg);
 }
 
-static void hda_write8(uint16_t reg, uint8_t v) {
+
+/* hda_write8 -- write 8-bit to HDA MMIO.
+ */static void hda_write8(uint16_t reg, uint8_t v) {
     *(volatile uint8_t*)(hda_mmio + reg) = v;
 }
 
-static void hda_write16(uint16_t reg, uint16_t v) {
+
+/* hda_write16 -- write 16-bit to HDA MMIO.
+ */static void hda_write16(uint16_t reg, uint16_t v) {
     *(volatile uint16_t*)(hda_mmio + reg) = v;
 }
 
-static void hda_write32(uint16_t reg, uint32_t v) {
+
+/* hda_write32 -- write 32-bit to HDA MMIO.
+ */static void hda_write32(uint16_t reg, uint32_t v) {
     *(volatile uint32_t*)(hda_mmio + reg) = v;
 }
 

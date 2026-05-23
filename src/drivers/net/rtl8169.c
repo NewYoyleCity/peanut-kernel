@@ -1,3 +1,10 @@
+/* rtl8169.c -- Realtek RTL8169/8168/8125 Gigabit Ethernet driver.
+ *
+ * MMIO-based driver for Realtek PCIe Ethernet controllers.  Allocates
+ * descriptor rings, reads MAC from the device registers, and provides
+ * send/receive via MMIO register access.
+ */
+
 #include "rtl8169.h"
 #include "net.h"
 #include "drivers/bus/io.h"
@@ -117,7 +124,9 @@ static void rtl_write8(uint16_t reg, uint8_t val) {
     }
 }
 
-static void rtl_name(void) {
+
+/* rtl_name -- set device name to "rtl8169".
+ */static void rtl_name(void) {
     rtl8169_dev.name[0] = 'r';
     rtl8169_dev.name[1] = 't';
     rtl8169_dev.name[2] = 'l';
@@ -171,7 +180,9 @@ static void rtl8169_recv(net_device_t *dev, void (*callback)(uint8_t *data, uint
     rtl_write16(RTL8169_REG_INTR_STATUS, 0xFFFF);
 }
 
-static int rtl8169_find(PciAddress *out) {
+
+/* rtl8169_find -- locate RTL8169/8168/8125 on the PCI bus.
+ */static int rtl8169_find(PciAddress *out) {
     if (pci_find_device(0x10EC, 0x8168, out) == 0) return 0;
     if (pci_find_device(0x10EC, 0x8169, out) == 0) return 0;
     if (pci_find_device(0x10EC, 0x8125, out) == 0) return 0;

@@ -1,3 +1,10 @@
+/* exfat.c -- exFAT filesystem driver.
+ *
+ * Implements read/write for exFAT volumes.  Supports the exFAT
+ * directory-entry set structure (file, stream, filename entries),
+ * cluster chains, and case-insensitive path resolution.
+ */
+
 #include "fs/exfat.h"
 
 #define EXFAT_EOC 0xFFFFFFFFu
@@ -8,22 +15,30 @@
 
 #define EXFAT_MAX_CLUSTER_SECTORS 8
 
-static uint16_t le16(const uint8_t* p) {
+
+/* le16 -- read little-endian 16-bit integer.
+ */static uint16_t le16(const uint8_t* p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
-static uint32_t le32(const uint8_t* p) {
+
+/* le32 -- read little-endian 32-bit integer.
+ */static uint32_t le32(const uint8_t* p) {
     return (uint32_t)p[0] |
         ((uint32_t)p[1] << 8) |
         ((uint32_t)p[2] << 16) |
         ((uint32_t)p[3] << 24);
 }
 
-static uint64_t le64(const uint8_t* p) {
+
+/* le64 -- read little-endian 64-bit integer.
+ */static uint64_t le64(const uint8_t* p) {
     return (uint64_t)le32(p) | ((uint64_t)le32(p + 4) << 32);
 }
 
-static int streq_ci(const char* a, const char* b) {
+
+/* streq_ci -- case-insensitive string comparison.
+ */static int streq_ci(const char* a, const char* b) {
     uint32_t i = 0;
     for (;;) {
         char x = a[i];
@@ -56,20 +71,26 @@ int exfat_probe_boot(BlockDevice* disk, uint64_t first_lba) {
     return 1;
 }
 
-static uint32_t cluster_first_lba(ExfatVolume* v, uint32_t cluster) {
+
+/* cluster_first_lba -- first LBA of an exFAT cluster.
+ */static uint32_t cluster_first_lba(ExfatVolume* v, uint32_t cluster) {
     if (cluster < 2 || cluster > v->cluster_count)
         return 0;
     return v->cluster_heap_lba + (cluster - 2u) * (uint32_t)v->sectors_per_cluster;
 }
 
-static int read_cluster(ExfatVolume* v, uint32_t cluster, uint8_t* buffer) {
+
+/* read_cluster -- read an exFAT cluster into buffer.
+ */static int read_cluster(ExfatVolume* v, uint32_t cluster, uint8_t* buffer) {
     uint32_t lba = cluster_first_lba(v, cluster);
     if (lba == 0)
         return -1;
     return block_read(v->partition.disk, lba, v->sectors_per_cluster, buffer);
 }
 
-static uint32_t next_cluster(ExfatVolume* v, uint32_t cluster) {
+
+/* next_cluster -- follow exFAT FAT to next cluster.
+ */static uint32_t next_cluster(ExfatVolume* v, uint32_t cluster) {
     uint64_t fat_byte = (uint64_t)cluster * 4ull;
     uint64_t sec = fat_byte / BLOCK_SECTOR_SIZE;
     unsigned off = (unsigned)(fat_byte % BLOCK_SECTOR_SIZE);
@@ -119,7 +140,9 @@ int exfat_mount(ExfatVolume* volume, const Partition* partition) {
     return 0;
 }
 
-static int parse_entry_set(const uint8_t* buf, uint32_t bytes, uint32_t off, ExfatDirEntry* out) {
+
+/* parse_entry_set -- parse an exFAT entry set (file+stream+filename).
+ */static int parse_entry_set(const uint8_t* buf, uint32_t bytes, uint32_t off, ExfatDirEntry* out) {
     if (off + 32 > bytes)
         return -1;
     if (buf[off] != EXFAT_ENTRY_FILE)
@@ -166,7 +189,9 @@ static int parse_entry_set(const uint8_t* buf, uint32_t bytes, uint32_t off, Exf
     return 0;
 }
 
-static uint32_t list_cluster(ExfatVolume* v, uint32_t cluster, ExfatDirEntry* entries, uint32_t max_entries) {
+
+/* list_cluster -- enumerate entries in an exFAT directory cluster.
+ */static uint32_t list_cluster(ExfatVolume* v, uint32_t cluster, ExfatDirEntry* entries, uint32_t max_entries) {
     uint8_t buf[BLOCK_SECTOR_SIZE * EXFAT_MAX_CLUSTER_SECTORS];
     uint32_t count = 0;
     uint32_t bytes = (uint32_t)v->sectors_per_cluster * BLOCK_SECTOR_SIZE;
@@ -199,7 +224,9 @@ static uint32_t list_cluster(ExfatVolume* v, uint32_t cluster, ExfatDirEntry* en
     return count;
 }
 
-static int find_in_cluster_chain(ExfatVolume* v, uint32_t cluster, const char* name, ExfatDirEntry* out) {
+
+/* find_in_cluster_chain -- find a file/dir by name in a cluster chain.
+ */static int find_in_cluster_chain(ExfatVolume* v, uint32_t cluster, const char* name, ExfatDirEntry* out) {
     ExfatDirEntry entries[64];
     uint32_t n = list_cluster(v, cluster, entries, 64);
     for (uint32_t i = 0; i < n; i++) {

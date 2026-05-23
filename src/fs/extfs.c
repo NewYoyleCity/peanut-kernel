@@ -1,3 +1,10 @@
+/* extfs.c -- Extended Filesystem driver (ext2/3/4 read + write).
+ *
+ * Supports block-mapped (indirect) and extent-mapped inodes, directory
+ * traversal, and file read/write.  Rejects 64-bit and metadata-checksum
+ * features as unsupported.  Handles up to triply-indirect blocks.
+ */
+
 #include "fs/extfs.h"
 
 #define EXT_SUPERBLOCK_OFFSET 1024u
@@ -12,11 +19,19 @@
 
 #define EXT4_EXTENTS_FL 0x80000u
 
-static uint16_t le16(const uint8_t* p) { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
-static uint32_t le32(const uint8_t* p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
-static uint64_t le64(const uint8_t* p) { return (uint64_t)le32(p) | ((uint64_t)le32(p + 4) << 32); }
 
-static int streq(const char* a, const char* b) {
+/* le16 -- read little-endian 16-bit.
+ */static uint16_t le16(const uint8_t* p) { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
+
+/* le32 -- read little-endian 32-bit.
+ */static uint32_t le32(const uint8_t* p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
+
+/* le64 -- read little-endian 64-bit.
+ */static uint64_t le64(const uint8_t* p) { return (uint64_t)le32(p) | ((uint64_t)le32(p + 4) << 32); }
+
+
+/* streq -- exact string comparison.
+ */static int streq(const char* a, const char* b) {
     uint32_t i = 0;
     while (a[i] && b[i]) {
         if (a[i] != b[i]) return 0;
@@ -25,11 +40,15 @@ static int streq(const char* a, const char* b) {
     return a[i] == b[i];
 }
 
-static uint64_t part_bytes_to_lba(uint64_t first_lba, uint64_t byte_off) {
+
+/* part_bytes_to_lba -- convert a byte offset to an absolute LBA.
+ */static uint64_t part_bytes_to_lba(uint64_t first_lba, uint64_t byte_off) {
     return first_lba + (byte_off / BLOCK_SECTOR_SIZE);
 }
 
-static int read_bytes(BlockDevice* d, uint64_t first_lba, uint64_t off, void* out, uint32_t len) {
+
+/* read_bytes -- read an arbitrary number of bytes at a byte offset (handles sector boundaries).
+ */static int read_bytes(BlockDevice* d, uint64_t first_lba, uint64_t off, void* out, uint32_t len) {
     uint8_t* dst = (uint8_t*)out;
     uint8_t sec[BLOCK_SECTOR_SIZE];
     uint64_t pos = off;
@@ -47,7 +66,9 @@ static int read_bytes(BlockDevice* d, uint64_t first_lba, uint64_t off, void* ou
     return 0;
 }
 
-static int write_bytes(BlockDevice* d, uint64_t first_lba, uint64_t off, const void* src_buf, uint32_t len) {
+
+/* write_bytes -- write an arbitrary number of bytes at a byte offset.
+ */static int write_bytes(BlockDevice* d, uint64_t first_lba, uint64_t off, const void* src_buf, uint32_t len) {
     const uint8_t* src = (const uint8_t*)src_buf;
     uint8_t sec[BLOCK_SECTOR_SIZE];
     uint64_t pos = off;
@@ -114,12 +135,16 @@ int extfs_mount(ExtVolume* v, const Partition* p) {
     return 0;
 }
 
-static int read_group_desc(ExtVolume* v, uint32_t group, uint8_t* out32) {
+
+/* read_group_desc -- read a 32-byte block group descriptor.
+ */static int read_group_desc(ExtVolume* v, uint32_t group, uint8_t* out32) {
     uint64_t off = (uint64_t)v->group_desc_off + (uint64_t)group * 32ull;
     return read_bytes(v->partition.disk, v->partition.first_lba, (uint64_t)(v->group_desc_lba - v->partition.first_lba) * BLOCK_SECTOR_SIZE + off, out32, 32);
 }
 
-static int read_inode_raw(ExtVolume* v, uint32_t inode, uint8_t* out, uint32_t out_len) {
+
+/* read_inode_raw -- read an inode's raw bytes by inode number.
+ */static int read_inode_raw(ExtVolume* v, uint32_t inode, uint8_t* out, uint32_t out_len) {
     if (inode == 0) return -1;
     uint32_t idx = inode - 1u;
     uint32_t group = idx / v->inodes_per_group;
@@ -135,17 +160,27 @@ static int read_inode_raw(ExtVolume* v, uint32_t inode, uint8_t* out, uint32_t o
     return read_bytes(v->partition.disk, v->partition.first_lba, inode_off, out, need);
 }
 
-static uint32_t inode_mode(const uint8_t* in) { return le16(in + 0); }
-static uint32_t inode_flags(const uint8_t* in) { return le32(in + 32); }
-static uint64_t inode_size_bytes(const uint8_t* in) {
+
+/* inode_mode -- extract file mode from inode.
+ */static uint32_t inode_mode(const uint8_t* in) { return le16(in + 0); }
+
+/* inode_flags -- extract inode flags.
+ */static uint32_t inode_flags(const uint8_t* in) { return le32(in + 32); }
+
+/* inode_size_bytes -- extract file size (64-bit) from inode.
+ */static uint64_t inode_size_bytes(const uint8_t* in) {
     uint64_t lo = le32(in + 4);
     uint64_t hi = le32(in + 108);
     return lo | (hi << 32);
 }
 
-static uint32_t inode_block_ptr(const uint8_t* in, uint32_t i) { return le32(in + 40 + i * 4u); }
 
-static uint32_t read_u32_block(ExtVolume* v, uint32_t block, uint32_t idx) {
+/* inode_block_ptr -- get direct block pointer by index.
+ */static uint32_t inode_block_ptr(const uint8_t* in, uint32_t i) { return le32(in + 40 + i * 4u); }
+
+
+/* read_u32_block -- read one uint32 from a block at a given index.
+ */static uint32_t read_u32_block(ExtVolume* v, uint32_t block, uint32_t idx) {
     uint8_t sec[BLOCK_SECTOR_SIZE];
     uint32_t per_sec = BLOCK_SECTOR_SIZE / 4u;
     uint32_t which_sec = idx / per_sec;
@@ -155,7 +190,9 @@ static uint32_t read_u32_block(ExtVolume* v, uint32_t block, uint32_t idx) {
     return le32(sec + off);
 }
 
-static uint32_t map_indirect(ExtVolume* v, const uint8_t* inode, uint32_t lbn) {
+
+/* map_indirect -- resolve a logical block number via indirect/triple-indirect blocks.
+ */static uint32_t map_indirect(ExtVolume* v, const uint8_t* inode, uint32_t lbn) {
     uint32_t per = v->block_size / 4u;
     if (lbn < 12u) return inode_block_ptr(inode, lbn);
     lbn -= 12u;
@@ -186,11 +223,15 @@ struct ext4_extent_header { uint16_t magic, entries, max, depth; uint32_t gen; }
 struct ext4_extent { uint32_t ee_block; uint16_t ee_len, ee_start_hi; uint32_t ee_start_lo; };
 struct ext4_extent_idx { uint32_t ei_block; uint32_t ei_leaf_lo; uint16_t ei_leaf_hi; uint16_t unused; };
 
-static int read_block_full(ExtVolume* v, uint32_t block, uint8_t* buf) {
+
+/* read_block_full -- read a complete filesystem block.
+ */static int read_block_full(ExtVolume* v, uint32_t block, uint8_t* buf) {
     return read_bytes(v->partition.disk, v->partition.first_lba, (uint64_t)block * (uint64_t)v->block_size, buf, v->block_size);
 }
 
-static uint32_t map_extents_recurse(ExtVolume* v, const uint8_t* node, uint32_t lbn) {
+
+/* map_extents_recurse -- resolve an LBN via the ext4 extent tree.
+ */static uint32_t map_extents_recurse(ExtVolume* v, const uint8_t* node, uint32_t lbn) {
     const struct ext4_extent_header* h = (const struct ext4_extent_header*)node;
     if (h->magic != 0xF30A) return 0;
     if (h->depth == 0) {
@@ -217,7 +258,9 @@ static uint32_t map_extents_recurse(ExtVolume* v, const uint8_t* node, uint32_t 
     return map_extents_recurse(v, buf, lbn);
 }
 
-static uint32_t map_block(ExtVolume* v, const uint8_t* inode, uint32_t lbn) {
+
+/* map_block -- map LBN to physical block using extents or indirect.
+ */static uint32_t map_block(ExtVolume* v, const uint8_t* inode, uint32_t lbn) {
     uint32_t flags = inode_flags(inode);
     if (flags & EXT4_EXTENTS_FL) {
         const uint8_t* root = inode + 40;
@@ -226,7 +269,9 @@ static uint32_t map_block(ExtVolume* v, const uint8_t* inode, uint32_t lbn) {
     return map_indirect(v, inode, lbn);
 }
 
-static int read_dir_entries(ExtVolume* v, uint32_t dir_inode, const char* name, uint32_t* out_inode, uint8_t want_dir) {
+
+/* read_dir_entries -- scan a directory for a named entry.
+ */static int read_dir_entries(ExtVolume* v, uint32_t dir_inode, const char* name, uint32_t* out_inode, uint8_t want_dir) {
     uint8_t in[256];
     if (read_inode_raw(v, dir_inode, in, sizeof(in)) != 0) return -1;
     if ((inode_mode(in) & EXT_INODE_MODE_DIR) == 0) return -1;

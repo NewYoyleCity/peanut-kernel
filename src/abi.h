@@ -1,3 +1,10 @@
+/* abi.h -- System call numbers and user-space ABI constants.
+ *
+ * Defines syscall numbers (SYS_READ, SYS_WRITE, etc.), network
+ * syscalls, power-management syscalls, and segment selector values
+ * used when switching to/from user space.
+ */
+
 #ifndef ABI_H
 #define ABI_H
 
@@ -45,6 +52,10 @@
 
 // DNS syscall
 #define SYS_GETADDRINFO 56
+
+// Power management syscalls
+#define SYS_REBOOT2     136
+#define SYS_POWEROFF    137
 
 #define PEANUT_SIGINT   2
 #define PEANUT_SIGKILL  9

@@ -1,3 +1,10 @@
+/* net.c -- Minimal networking stack (Ethernet / ARP / IP).
+ *
+ * Maintains a linked list of registered network devices, an ARP cache,
+ * and a simple packet dispatch that handles ARP requests/replies and
+ * prints UDP/TCP/ICMP packet headers.
+ */
+
 #include "net.h"
 #include "freelib/kstdio.h"
 #include "freelib/kalloc.h"
@@ -51,7 +58,9 @@ uint16_t net_checksum(uint16_t *addr, uint32_t count) {
     return ~sum;
 }
 
-static void net_handle_arp(uint8_t *data, uint32_t len, uint8_t *src_mac) {
+
+/* net_handle_arp -- process incoming ARP packets; update cache, optionally reply.
+ */static void net_handle_arp(uint8_t *data, uint32_t len, uint8_t *src_mac) {
     if (len < ETH_HDR_LEN + ARP_HDR_LEN) return;
 
     arp_pkt_t *arp = (arp_pkt_t *)(data + ETH_HDR_LEN);

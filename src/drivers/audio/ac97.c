@@ -1,3 +1,9 @@
+/* ac97.c -- Intel AC97 audio controller driver.
+ *
+ * Locates the AC97 controller via PCI, resets the bus-master engine,
+ * and unmutes the master volume.  No PCM streaming is implemented.
+ */
+
 #include "ac97.h"
 #include "drivers/bus/io.h"
 #include "drivers/bus/pci.h"
@@ -10,7 +16,9 @@
 #define AC97_DEVICE_ICH4 0x24C5
 #define AC97_DEVICE_QEMU 0x266E
 
-static int ac97_find(PciAddress* out) {
+
+/* ac97_find -- search PCI for an AC97-compatible audio controller.
+ */static int ac97_find(PciAddress* out) {
     static const uint16_t ids[] = { AC97_DEVICE_ICH, AC97_DEVICE_ICH2, AC97_DEVICE_ICH4, AC97_DEVICE_QEMU };
     for (uint32_t i = 0; i < sizeof(ids) / sizeof(ids[0]); i++) {
         if (pci_find_device(AC97_VENDOR_INTEL, ids[i], out) == 0)

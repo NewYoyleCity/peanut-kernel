@@ -1,12 +1,23 @@
+/* partition.c -- MBR partition table scanner.
+ *
+ * Reads sector 0, validates the 0x55AA signature, and extracts up to
+ * PARTITION_MAX entries.  Provides helpers to query partition type.
+ */
+
 #include "fs/partition.h"
 
-static uint32_t le32(const uint8_t* p) {
+
+/* le32 -- read little-endian 32-bit integer from byte buffer.
+ */static uint32_t le32(const uint8_t* p) {
     return (uint32_t)p[0] |
         ((uint32_t)p[1] << 8) |
         ((uint32_t)p[2] << 16) |
         ((uint32_t)p[3] << 24);
 }
 
+
+/* partition_is_fat32 -- return 1 if the partition type is FAT32 (0x0B, 0x0C, 0x1B, 0x1C).
+ */
 int partition_is_fat32(const Partition* partition) {
     if (!partition) return 0;
     return partition->type == 0x0B ||
@@ -15,6 +26,9 @@ int partition_is_fat32(const Partition* partition) {
         partition->type == 0x1C;
 }
 
+
+/* partition_is_fat -- return 1 for any FAT partition type.
+ */
 int partition_is_fat(const Partition* partition) {
     if (!partition) return 0;
     if (partition_is_fat32(partition)) return 1;
@@ -28,6 +42,9 @@ int partition_is_fat(const Partition* partition) {
         partition->type == 0x1E;
 }
 
+
+/* partition_scan_mbr -- read the MBR and extract partition entries.
+ */
 int partition_scan_mbr(BlockDevice* disk, Partition* out, uint32_t max_partitions) {
     uint8_t sector[BLOCK_SECTOR_SIZE];
     uint32_t found = 0;

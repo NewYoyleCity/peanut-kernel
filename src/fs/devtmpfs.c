@@ -1,3 +1,9 @@
+/* devtmpfs.c -- Device temporary filesystem mounted at /dev.
+ *
+ * Exposes kernel devices (/dev/zero, /dev/random, /dev/urandom,
+ * /dev/kbd, /dev/mouse, /dev/ttyS0, /dev/fstab) as pseudo-files.
+ */
+
 #include "fs/devtmpfs.h"
 #include "drivers/entropy.h"
 #include "drivers/input/ps2.h"
@@ -15,7 +21,9 @@ int usb_mouse_poll_packet(uint8_t packet[4]);
 
 static int mounted;
 
-static int streq(const char* a, const char* b) {
+
+/* streq -- compare two strings for exact equality.
+ */static int streq(const char* a, const char* b) {
     uint32_t i = 0;
     while (a[i] && b[i]) {
         if (a[i] != b[i]) return 0;
@@ -24,7 +32,9 @@ static int streq(const char* a, const char* b) {
     return a[i] == b[i];
 }
 
-static int prefix(const char* path, const char* p) {
+
+/* prefix -- check if path has the given prefix at component boundary.
+ */static int prefix(const char* path, const char* p) {
     uint32_t i = 0;
     while (p[i]) {
         if (path[i] != p[i]) return 0;
@@ -33,7 +43,9 @@ static int prefix(const char* path, const char* p) {
     return path[i] == '\0' || path[i] == '/';
 }
 
-static int copy_text(const char* s, uint32_t off, uint8_t* buf, uint32_t len, uint32_t* out) {
+
+/* copy_text -- extract a substring from a static text buffer.
+ */static int copy_text(const char* s, uint32_t off, uint8_t* buf, uint32_t len, uint32_t* out) {
     uint32_t sl = 0;
     while (s[sl]) sl++;
     if (off >= sl) {
@@ -48,14 +60,23 @@ static int copy_text(const char* s, uint32_t off, uint8_t* buf, uint32_t len, ui
     return 0;
 }
 
+
+/* devtmpfs_mount -- mark the devtmpfs as mounted.
+ */
 void devtmpfs_mount(void) {
     mounted = 1;
 }
 
+
+/* devtmpfs_is_path -- check if a path lives under /dev.
+ */
 int devtmpfs_is_path(const char* path) {
     return mounted && path && prefix(path, "/dev");
 }
 
+
+/* devtmpfs_pread -- read from a /dev pseudo-file (zero, random, kbd, mouse, tty, etc.).
+ */
 int devtmpfs_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len, uint32_t* out) {
     if (!mounted || !path || !buf || !out)
         return -1;
@@ -136,6 +157,9 @@ int devtmpfs_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len, u
     return -1;
 }
 
+
+/* devtmpfs_pwrite -- write to a /dev pseudo-file (currently only /dev/ttyS0).
+ */
 int devtmpfs_pwrite(const char* path, uint32_t off, const uint8_t* buf, uint32_t len, uint32_t* out) {
     (void)off;
     if (!mounted || !path || !buf || !out)

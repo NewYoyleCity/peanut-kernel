@@ -1,3 +1,10 @@
+/* usb_hid.cpp -- USB HID keyboard driver (C++).
+ *
+ * Provides a C++ class (UsbHidKeyboard) that polls xHCI for HID
+ * keyboard reports and translates usage codes to ASCII using
+ * shifted/unshifted scancode maps.
+ */
+
 #include "drivers/usb/usb_hid.hpp"
 #include "drivers/usb/xhci.h"
 #include "freelib/kstdio.h"

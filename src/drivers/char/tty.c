@@ -1,3 +1,9 @@
+/* tty.c -- Serial (UART 16550) TTY driver.
+ *
+ * Initialises COM1 at 115200 baud, provides interrupt-driven input
+ * via a ring buffer and polled output.  Exposed through /dev/ttyS0.
+ */
+
 #include "drivers/char/tty.h"
 #include "drivers/bus/io.h"
 #include "freelib/kstdio.h"
@@ -22,15 +28,21 @@ static uint8_t rbuf[TTY_RBUF_SIZE];
 static uint32_t rbuf_head;
 static uint32_t rbuf_tail;
 
-static uint8_t tty_inb(uint16_t reg) {
+
+/* tty_inb -- read a byte from a COM1 register.
+ */static uint8_t tty_inb(uint16_t reg) {
     return inb(COM1 + reg);
 }
 
-static void tty_outb(uint16_t reg, uint8_t val) {
+
+/* tty_outb -- write a byte to a COM1 register.
+ */static void tty_outb(uint16_t reg, uint8_t val) {
     outb(COM1 + reg, val);
 }
 
-static void tty_irq_handler(void) {
+
+/* tty_irq_handler -- drain UART data into ring buffer.
+ */static void tty_irq_handler(void) {
     while (tty_inb(UART_LSR) & LSR_DR) {
         uint8_t c = tty_inb(UART_RBR);
         uint32_t next = (rbuf_head + 1) % TTY_RBUF_SIZE;

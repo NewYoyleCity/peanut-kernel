@@ -1,3 +1,10 @@
+/* xhci_hid.c -- xHCI HID (keyboard/mouse) device configuration.
+ *
+ * Configures USB HID devices attached to xHCI ports: reads device
+ * and configuration descriptors, determines if the device is a
+ * keyboard or mouse, and starts interrupt transfers.
+ */
+
 #include "drivers/usb/xhci.h"
 #include "freelib/kstdio.h"
 #include "freelib/kstdint.h"

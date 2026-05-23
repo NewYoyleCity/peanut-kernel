@@ -1,3 +1,10 @@
+/* iso9660.c -- ISO 9660 CD-ROM filesystem driver.
+ *
+ * Reads the Primary Volume Descriptor at sector 16 and walks the
+ * directory hierarchy.  Supports reading regular files from CD/DVD
+ * media via the cdrom block driver.
+ */
+
 #include "iso9660.h"
 #include "freelib/kstdio.h"
 #include "freelib/kalloc.h"
@@ -7,23 +14,31 @@ static iso9660_pvd_t *iso_pvd = NULL;
 static uint32_t iso_root_lba = 0;
 static uint32_t iso_root_size = 0;
 
-static uint16_t iso_le16(const uint8_t *p) {
+
+/* iso_le16 -- read little-endian 16-bit.
+ */static uint16_t iso_le16(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
-static uint32_t iso_le32(const uint8_t *p) {
+
+/* iso_le32 -- read little-endian 32-bit.
+ */static uint32_t iso_le32(const uint8_t *p) {
     return (uint32_t)p[0] |
         ((uint32_t)p[1] << 8) |
         ((uint32_t)p[2] << 16) |
         ((uint32_t)p[3] << 24);
 }
 
-static char iso_upper(char c) {
+
+/* iso_upper -- convert to uppercase (ISO 9660 is case-insensitive).
+ */static char iso_upper(char c) {
     if (c >= 'a' && c <= 'z') return (char)(c - ('a' - 'A'));
     return c;
 }
 
-static int iso_component_equal(const char *path, uint32_t path_len, const uint8_t *name, uint8_t name_len) {
+
+/* iso_component_equal -- compare a path component against a directory record name.
+ */static int iso_component_equal(const char *path, uint32_t path_len, const uint8_t *name, uint8_t name_len) {
     uint32_t effective_len = name_len;
 
     while (effective_len > 0 && name[effective_len - 1u] == ' ') effective_len--;
@@ -39,7 +54,9 @@ static int iso_component_equal(const char *path, uint32_t path_len, const uint8_
     return 1;
 }
 
-static void iso_next_component(const char **path, const char **name, uint32_t *len) {
+
+/* iso_next_component -- extract the next path component.
+ */static void iso_next_component(const char **path, const char **name, uint32_t *len) {
     const char *p = *path;
     while (*p == '/') p++;
     *name = p;
@@ -48,7 +65,9 @@ static void iso_next_component(const char **path, const char **name, uint32_t *l
     *path = p + *len;
 }
 
-static int iso_find_in_dir(uint32_t dir_lba, uint32_t dir_size, const char *path,
+
+/* iso_find_in_dir -- walk an ISO 9660 directory hierarchy to find a path.
+ */static int iso_find_in_dir(uint32_t dir_lba, uint32_t dir_size, const char *path,
     uint32_t *out_lba, uint32_t *out_size, int *out_is_dir) {
     uint8_t sector[ISO9660_SECTOR_SIZE];
     const char *component;

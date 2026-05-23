@@ -5,6 +5,11 @@ LD = ld
 
 KCONFIG_HEADER = include/generated/autoconf.h
 
+# Flex is required by the Kconfig toolchain (scripts/kconfig/zconf.l)
+.PHONY: check_flex
+check_flex:
+	@command -v flex >/dev/null 2>&1 || { echo "ERROR: flex not found. flex is required to build the Kconfig infrastructure."; exit 1; }
+
 CFLAGS = -ffreestanding -mcmodel=kernel -mno-red-zone -m64 -mno-sse -mno-sse2 \
          -fno-pic -fno-pie -fcf-protection=none \
          -Iinclude -Iinclude/generated -Isrc
@@ -98,6 +103,15 @@ endif
 ifeq ($(CONFIG_AUDIO_HDA),y)
   SRCS_C += src/drivers/audio/hda.c
 endif
+ifeq ($(CONFIG_AUDIO_SB16),y)
+  SRCS_C += src/drivers/audio/sb16.c
+endif
+ifeq ($(CONFIG_AUDIO_PCSPKR),y)
+  SRCS_C += src/drivers/audio/pcspkr.c
+endif
+ifeq ($(CONFIG_ACPI),y)
+  SRCS_C += src/drivers/acpi.c
+endif
 ifeq ($(CONFIG_USB_XHCI),y)
   SRCS_C += src/drivers/usb/xhci.c
   SRCS_C += src/drivers/usb/xhci_hid.c
@@ -139,7 +153,7 @@ INIT_SRC = src/programs/init_sample.c
 INIT_ELF = build/programs/init.elf
 
 
-all: check_config build/kernel.elf
+all: check_flex check_config build/kernel.elf
 
 compress: check_config build/kernel.elf build/kernel.final.elf
 

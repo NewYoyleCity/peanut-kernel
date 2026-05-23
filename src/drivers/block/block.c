@@ -1,3 +1,9 @@
+/* block.c -- Block device abstraction layer.
+ *
+ * Provides thread-safe wrappers (using a global spinlock) around
+ * the read/write function pointers of BlockDevice instances.
+ */
+
 #include "drivers/block/block.h"
 #include "cpu/spinlock.h"
 

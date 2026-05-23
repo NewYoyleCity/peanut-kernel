@@ -1,3 +1,10 @@
+; switch.asm -- 32-bit to 64-bit mode switch and kernel entry.
+;
+; Sets up page tables (2 MB identity mapping for first 4 GB),
+; enables PAE + long mode, loads a minimal GDT, and jumps to
+; the 64-bit kernel entry point (kmain).  Also contains the
+; default interrupt handler stub and the syscall entry point.
+;
 
 section .multiboot_header
 align 8

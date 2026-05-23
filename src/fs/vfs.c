@@ -1,3 +1,10 @@
+/* vfs.c -- Minimal Virtual File System layer.
+ *
+ * Provides pseudo-files (/proc, /sys, /dev, /etc) served by in-kernel
+ * string generators, and delegates physical filesystem access to the
+ * storage layer.  The devtmpfs is mounted at /dev for device nodes.
+ */
+
 #include "fs/vfs.h"
 #include "freelib/kstdint.h"
 #include "drivers/entropy.h"
@@ -6,7 +13,9 @@
 
 static int dev_mounted;
 
-static int path_has_prefix(const char* path, const char* prefix) {
+
+/* path_has_prefix -- test if path starts with a prefix at a component boundary.
+ */static int path_has_prefix(const char* path, const char* prefix) {
     uint32_t i = 0;
     for (;; i++) {
         if (prefix[i] == '\0')
@@ -16,15 +25,24 @@ static int path_has_prefix(const char* path, const char* prefix) {
     }
 }
 
+
+/* vfs_init -- initialise the VFS layer (currently seeds entropy pool).
+ */
 void vfs_init(void) {
     entropy_init();
 }
 
+
+/* vfs_mount_devtmpfs -- mount the device temporary filesystem at /dev.
+ */
 void vfs_mount_devtmpfs(void) {
     devtmpfs_mount();
     dev_mounted = 1;
 }
 
+
+/* vfs_is_pseudo_path -- return 1 if the path lives under /proc, /sys, /dev, or /etc.
+ */
 int vfs_is_pseudo_path(const char* path) {
     if (!path || path[0] != '/')
         return 0;
@@ -34,7 +52,9 @@ int vfs_is_pseudo_path(const char* path) {
     return 0;
 }
 
-static int pseudo_copy(const char* s, uint32_t off, uint8_t* buf, uint32_t len, uint32_t* out) {
+
+/* pseudo_copy -- copy a substring from a static string.
+ */static int pseudo_copy(const char* s, uint32_t off, uint8_t* buf, uint32_t len, uint32_t* out) {
     uint32_t sl = 0;
     while (s[sl]) sl++;
     if (off >= sl) {
@@ -48,6 +68,9 @@ static int pseudo_copy(const char* s, uint32_t off, uint8_t* buf, uint32_t len, 
     return 0;
 }
 
+
+/* vfs_pseudo_pread -- read from a pseudo-path with offset support.
+ */
 int vfs_pseudo_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len, uint32_t* out) {
     if (!path || !buf || !out)
         return -1;
@@ -77,6 +100,9 @@ int vfs_pseudo_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len,
     return -1;
 }
 
+
+/* vfs_pseudo_pwrite -- write to a pseudo-path with offset support.
+ */
 int vfs_pseudo_pwrite(const char* path, uint32_t off, const uint8_t* buf, uint32_t len, uint32_t* out) {
     if (!path || !buf || !out)
         return -1;
@@ -86,6 +112,9 @@ int vfs_pseudo_pwrite(const char* path, uint32_t off, const uint8_t* buf, uint32
     return -1;
 }
 
+
+/* vfs_pseudo_read -- read from a pseudo-path at offset 0.
+ */
 int vfs_pseudo_read(const char* path, uint8_t* buf, uint32_t len, uint32_t* out) {
     return vfs_pseudo_pread(path, 0, buf, len, out);
 }

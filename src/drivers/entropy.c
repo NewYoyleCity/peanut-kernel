@@ -1,3 +1,10 @@
+/* entropy.c -- Kernel entropy pool and random byte generator.
+ *
+ * Seeds a software entropy pool from RDRAND, RDSEED, RDTSC, RDPMC,
+ * CPU flags, stack addresses, PCI config space, and timing jitter.
+ * Exposes entropy_random_byte() and entropy_urandom_byte().
+ */
+
 #include "drivers/entropy.h"
 #include "drivers/bus/io.h"
 #include "drivers/bus/pci.h"
@@ -8,41 +15,55 @@ static int has_rdseed;
 static uint64_t pool[16];
 static uint32_t pool_idx;
 
-static void cpuid(uint32_t leaf, uint32_t subleaf, uint32_t* a, uint32_t* b, uint32_t* c, uint32_t* d) {
+
+/* cpuid -- execute the CPUID instruction.
+ */static void cpuid(uint32_t leaf, uint32_t subleaf, uint32_t* a, uint32_t* b, uint32_t* c, uint32_t* d) {
     __asm__ volatile("cpuid" : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d) : "a"(leaf), "c"(subleaf));
 }
 
-static int rdrand64(uint64_t* out) {
+
+/* rdrand64 -- read a 64-bit random value via RDRAND.
+ */static int rdrand64(uint64_t* out) {
     uint8_t ok;
     __asm__ volatile("rdrand %0; setc %1" : "=r"(*out), "=qm"(ok));
     return ok;
 }
 
-static int rdseed64(uint64_t* out) {
+
+/* rdseed64 -- read a 64-bit random value via RDSEED.
+ */static int rdseed64(uint64_t* out) {
     uint8_t ok;
     __asm__ volatile("rdseed %0; setc %1" : "=r"(*out), "=qm"(ok));
     return ok;
 }
 
-static uint64_t read_tsc(void) {
+
+/* read_tsc -- read the timestamp counter (RDTSC).
+ */static uint64_t read_tsc(void) {
     uint32_t lo, hi;
     __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
     return ((uint64_t)hi << 32) | lo;
 }
 
-static uint64_t read_pmc(void) {
+
+/* read_pmc -- read a performance-monitoring counter (RDPMC).
+ */static uint64_t read_pmc(void) {
     uint32_t lo, hi;
     __asm__ volatile("rdpmc" : "=a"(lo), "=d"(hi) : "c"(0));
     return ((uint64_t)hi << 32) | lo;
 }
 
-static uint64_t read_flags(void) {
+
+/* read_flags -- read RFLAGS via pushfq.
+ */static uint64_t read_flags(void) {
     uint64_t r;
     __asm__ volatile("pushfq; pop %0" : "=r"(r));
     return r;
 }
 
-static uint64_t read_bp(void) {
+
+/* read_bp -- read current RBP value.
+ */static uint64_t read_bp(void) {
     uint64_t r;
     __asm__ volatile("mov %%rbp, %0" : "=r"(r));
     return r;
@@ -61,7 +82,9 @@ void entropy_mix(uint64_t value) {
         entropy_state ^= pool[(pool_idx - 1 - i) & 15] << (i * 13);
 }
 
-static void sample_timing_jitter(void) {
+
+/* sample_timing_jitter -- mix RDTSC jitter into the entropy pool.
+ */static void sample_timing_jitter(void) {
     for (int i = 0; i < 32; i++) {
         uint64_t a = read_tsc();
         uint64_t b = read_tsc();
@@ -70,7 +93,9 @@ static void sample_timing_jitter(void) {
     }
 }
 
-static void harvest_pci_entropy(void) {
+
+/* harvest_pci_entropy -- scan PCI config space for entropy.
+ */static void harvest_pci_entropy(void) {
     for (uint32_t bus = 0; bus < 256; bus++) {
         for (uint32_t slot = 0; slot < 32; slot++) {
             PciAddress addr;
@@ -115,7 +140,9 @@ int entropy_has_hardware_rng(void) {
     return has_rdrand || has_rdseed;
 }
 
-static uint64_t entropy_gather_raw(void) {
+
+/* entropy_gather_raw -- collect a raw entropy value from hardware or timing.
+ */static uint64_t entropy_gather_raw(void) {
     uint64_t x = 0;
     if (has_rdseed) {
         for (uint32_t i = 0; i < 64; i++)

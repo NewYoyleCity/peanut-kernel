@@ -1,3 +1,8 @@
+/* kpanic.c -- Kernel panic handler.
+ *
+ * Prints a panic message, disables interrupts, and halts forever.
+ */
+
 #include "kpanic.h"
 #include "kstdio.h"
 

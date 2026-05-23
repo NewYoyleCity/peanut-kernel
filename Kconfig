@@ -67,6 +67,20 @@ config DMESG_RESTRICT
       When set, non-root users cannot read kernel log messages
       (currently a stub; effectively disables dmesg for unprivileged).
 
+config KPTR_RESTRICT
+    bool "Restrict kernel pointer exposure"
+    default y
+    help
+      When set, kernel addresses are sanitized in /proc and sysfs
+      output to prevent leaking KASLR offsets to unprivileged users.
+
+config PAGE_POISON
+    bool "Poison freed pages"
+    default y
+    help
+      Fills freed physical pages with a known pattern (0xCC)
+      to detect use-after-free bugs in the kernel.
+
 endmenu
 
 
@@ -203,6 +217,20 @@ config AUDIO_HDA
     help
       Initialize PCI HDA controllers and their command/response rings.
 
+config AUDIO_SB16
+    bool "Sound Blaster 16 DSP driver"
+    default y
+    help
+      Driver for the Creative Sound Blaster 16 ISA sound card.
+      Supports 8-bit and 16-bit PCM playback via DMA.
+
+config AUDIO_PCSPKR
+    bool "PC speaker driver"
+    default y
+    help
+      Driver for the built-in PC speaker using PIT channel 2.
+      Can play simple tones and melodies.
+
 endmenu
 
 menu "ATA/Storage drivers"
@@ -222,11 +250,12 @@ config STORAGE_NVME
       Driver for NVMe non-volatile memory storage devices.
 
 config BLOCK_RAID
-    bool "Software RAID support (RAID0/RAID1)"
+    bool "Software RAID support (RAID0/RAID1/RAID5/RAID10)"
     default y
     help
-      Enables software RAID0 (striping) and RAID1 (mirroring)
-      across multiple block devices.
+      Enables software RAID0 (striping), RAID1 (mirroring),
+      RAID5 (striping with distributed parity), and RAID10
+      (striped mirrors) across multiple block devices.
 
 config STORAGE_TESTS
     bool "Run storage self-tests at boot"
@@ -258,6 +287,18 @@ menu "Input drivers"
 config INPUT_PS2
     bool "PS/2 keyboard and mouse"
     default y
+
+endmenu
+
+menu "ACPI Support"
+
+config ACPI
+    bool "Enable ACPI power management"
+    default y
+    help
+      Enables ACPI (Advanced Configuration and Power Interface) support.
+      Provides system poweroff and reboot via ACPI PM registers.
+      Discovers the RSDP, parses the FADT, and uses PM1a_CNT/SLP_TYP.
 
 endmenu
 

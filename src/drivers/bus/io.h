@@ -1,3 +1,9 @@
+/* io.h -- x86 I/O port access inline functions.
+ *
+ * Provides inb/inw/inl/outb/outw/outl for port-mapped I/O,
+ * plus rep insw/outsw for block transfers and io_wait().
+ */
+
 #ifndef IO_H
 #define IO_H
 

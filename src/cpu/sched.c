@@ -1,3 +1,20 @@
+/* sched.c -- Minimal cooperative/preemptive scheduler.
+ *
+ * Supports a fixed number of processes (PROC_MAX).  Each process saves its
+ * register frame (20 qwords) so that irq_timer_dispatch can switch between
+ * them on timer interrupts.  The scheduling policy is configurable:
+ *   - CONFIG_SCHED_CFS: always pick the process with the smallest vruntime
+ *     (a very simple Completely Fair Scheduler emulation).
+ *   - default: round-robin.
+ *
+ * User-space preemption is enabled via sched_arm_user_preempt() and only
+ * switches when the interrupted code is running at ring 3.
+ *
+ * Key design decisions:
+ *   - The idle loop (idle_entry) runs in ring 0 with interrupts enabled.
+ *   - PROC_ZOMBIE state is terminal; no wait/reap mechanism yet.
+ *   - The frame layout matches the order pushed by irq.asm. */
+
 #include "cpu/sched.h"
 #include "cpu/pic.h"
 #include "cpu/pit.h"
@@ -29,6 +46,9 @@ static int current_proc;
 static int next_pid;
 volatile int sched_in_idle;
 volatile uint64_t sched_jiffies;
+
+/* idle_entry -- idle process: loops with STI; HLT, consuming no CPU.
+ */
 void idle_entry(void) {
     sched_in_idle = 1;
     for (;;) {
@@ -36,10 +56,15 @@ void idle_entry(void) {
     }
 }
 
-static void memcpy64(uint64_t* d, const uint64_t* s, uint32_t n) {
+
+/* memcpy64 -- copy n qwords (used for register-frame save/restore).
+ */static void memcpy64(uint64_t* d, const uint64_t* s, uint32_t n) {
     for (uint32_t i = 0; i < n; i++) d[i] = s[i];
 }
 
+
+/* sched_init -- initialise process table; mark all slots unused.
+ */
 void sched_init(void) {
     user_preempt_armed = 0;
     sched_in_idle = 0;
@@ -55,20 +80,31 @@ void sched_init(void) {
     }
 }
 
+
+/* sched_arm_user_preempt -- enable user-space preemption on next timer tick.
+ */
 void sched_arm_user_preempt(void) {
     user_preempt_armed = 1;
 }
 
+
+/* sched_disarm_user_preempt -- disable preemption and clear idle flag.
+ */
 void sched_disarm_user_preempt(void) {
     user_preempt_armed = 0;
     sched_in_idle = 0;
 }
 
+
+/* sched_mark_user_live -- mark that user code is executing (idle is false).
+ */
 void sched_mark_user_live(void) {
     sched_in_idle = 0;
 }
 
-static int alloc_proc(void) {
+
+/* alloc_proc -- find the first unused process slot.
+ */static int alloc_proc(void) {
     for (uint32_t i = 0; i < PROC_MAX; i++) {
         if (procs[i].state == PROC_UNUSED)
             return (int)i;
@@ -76,6 +112,9 @@ static int alloc_proc(void) {
     return -1;
 }
 
+
+/* sched_create_user -- create a new user process with the given entry and stack.
+ */
 int sched_create_user(uint64_t entry, uint64_t user_rsp) {
     int slot = alloc_proc();
     if (slot < 0)
@@ -97,6 +136,9 @@ int sched_create_user(uint64_t entry, uint64_t user_rsp) {
     return p->pid;
 }
 
+
+/* sched_fork_current -- fork the current process; child gets a clean frame.
+ */
 int sched_fork_current(uint64_t user_rip, uint64_t user_rsp, uint64_t user_flags) {
     if (current_proc < 0 || procs[current_proc].state != PROC_RUNNABLE)
         return -1;
@@ -119,6 +161,9 @@ int sched_fork_current(uint64_t user_rip, uint64_t user_rsp, uint64_t user_flags
     return child->pid;
 }
 
+
+/* sched_kill -- send a signal to a process; SIGKILL moves it to ZOMBIE.
+ */
 int sched_kill(int pid, int signal) {
     for (uint32_t i = 0; i < PROC_MAX; i++) {
         if (procs[i].state == PROC_RUNNABLE && procs[i].pid == pid) {
@@ -133,12 +178,18 @@ int sched_kill(int pid, int signal) {
     return -1;
 }
 
+
+/* sched_current_pid -- return PID of the currently running process.
+ */
 int sched_current_pid(void) {
     if (current_proc < 0 || procs[current_proc].state != PROC_RUNNABLE)
         return -1;
     return procs[current_proc].pid;
 }
 
+
+/* sched_runnable_count -- return number of runnable processes.
+ */
 int sched_runnable_count(void) {
     int n = 0;
     for (uint32_t i = 0; i < PROC_MAX; i++) {
@@ -148,7 +199,9 @@ int sched_runnable_count(void) {
     return n;
 }
 
-static int choose_rr(void) {
+
+/* choose_rr -- round-robin selection from the process table.
+ */static int choose_rr(void) {
     int start = current_proc < 0 ? 0 : current_proc + 1;
     for (uint32_t n = 0; n < PROC_MAX; n++) {
         int idx = (start + (int)n) % PROC_MAX;
@@ -158,7 +211,9 @@ static int choose_rr(void) {
     return -1;
 }
 
-static int choose_cfs(void) {
+
+/* choose_cfs -- select the process with the smallest vruntime.
+ */static int choose_cfs(void) {
     int best = -1;
     for (uint32_t i = 0; i < PROC_MAX; i++) {
         if (procs[i].state != PROC_RUNNABLE)
@@ -169,7 +224,9 @@ static int choose_cfs(void) {
     return best;
 }
 
-static int choose_next(void) {
+
+/* choose_next -- pick next process according to configured policy.
+ */static int choose_next(void) {
 #ifdef CONFIG_SCHED_CFS
     return choose_cfs();
 #else
@@ -177,6 +234,10 @@ static int choose_next(void) {
 #endif
 }
 
+
+/* irq_timer_dispatch -- timer interrupt handler: saves current frame,
+ * selects next process, returns pointer to its saved frame for iretq.
+ */
 uint64_t* irq_timer_dispatch(uint64_t* sp) {
     pit_tick();
     pic_master_eoi();

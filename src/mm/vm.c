@@ -1,3 +1,10 @@
+/* vm.c -- x86-64 virtual memory manager.
+ *
+ * Manages 4-level page tables (PML4, PDPT, PD, PT).  Supports identity
+ * mapping with 2 MB huge pages, 4 KB page mapping for user segments,
+ * a simple page allocator (bump + free list), and KASLR via ASLR slide.
+ */
+
 #include "mm/vm.h"
 #include "freelib/kalloc.h"
 #include "config.h"
@@ -26,11 +33,15 @@ typedef struct FreePage {
 
 static FreePage* free_page_list;
 
-static uint64_t align_up(uint64_t v, uint64_t a) {
+
+/* align_up -- round v up to the next multiple of a (must be power of 2).
+ */static uint64_t align_up(uint64_t v, uint64_t a) {
     return (v + a - 1ull) & ~(a - 1ull);
 }
 
-static int vm_split_2m(uint64_t addr) {
+
+/* vm_split_2m -- convert a 2 MB huge page at addr into 4 KB page-table entries.
+ */static int vm_split_2m(uint64_t addr) {
     if (addr & 0x1FFFFFull) return -1;
     uint32_t pdpt_i = (uint32_t)((addr >> 30) & 0x1ffu);
     uint32_t pd_i = (uint32_t)((addr >> 21) & 0x1ffu);
@@ -46,6 +57,9 @@ static int vm_split_2m(uint64_t addr) {
     return 0;
 }
 
+
+/* vm_map_user_pages -- map a range of user-accessible 4 KB pages.
+ */
 int vm_map_user_pages(uint64_t vaddr, uint64_t size, uint64_t extra_flags) {
     uint64_t aligned_start = vaddr & ~(VM_PAGE_SIZE - 1ull);
     uint64_t aligned_end = (vaddr + size + VM_PAGE_SIZE - 1ull) & ~(VM_PAGE_SIZE - 1ull);
@@ -57,6 +71,9 @@ int vm_map_user_pages(uint64_t vaddr, uint64_t size, uint64_t extra_flags) {
     return 0;
 }
 
+
+/* vm_init -- set up kernel PML4 with 2 MB identity mapping for first 4 GB.
+ */
 void vm_init(void) {
     page_bump = (uint8_t*)align_up((uint64_t)&_kernel_end, VM_PAGE_SIZE);
     free_page_list = NULL;
@@ -64,6 +81,9 @@ void vm_init(void) {
     __asm__ volatile("mov %0, %%cr3" : : "r"((uint64_t)kernel_pml4) : "memory");
 }
 
+
+/* vm_alloc_page -- allocate a zeroed 4 KB page (from free list or bump allocator).
+ */
 void* vm_alloc_page(void) {
     if (free_page_list) {
         void* page = free_page_list;
@@ -79,6 +99,9 @@ void* vm_alloc_page(void) {
     return page;
 }
 
+
+/* vm_free_page -- return a 4 KB page to the free list.
+ */
 void vm_free_page(void* page) {
     if (!page) return;
     FreePage* fp = (FreePage*)page;
@@ -86,10 +109,16 @@ void vm_free_page(void* page) {
     free_page_list = fp;
 }
 
+
+/* vm_kernel_cr3 -- return the physical address of the kernel PML4.
+ */
 uint64_t vm_kernel_cr3(void) {
     return (uint64_t)kernel_pml4;
 }
 
+
+/* vm_map_identity_2m -- identity-map a range with 2 MB pages.
+ */
 int vm_map_identity_2m(uint64_t start, uint64_t bytes, uint64_t flags) {
     if ((start & 0x1FFFFFull) || (bytes & 0x1FFFFFull))
         return -1;
@@ -109,6 +138,9 @@ int vm_map_identity_2m(uint64_t start, uint64_t bytes, uint64_t flags) {
     return 0;
 }
 
+
+/* vm_map_page -- map a single 4 KB page in the kernel page tables.
+ */
 int vm_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
     if ((virt & (VM_PAGE_SIZE - 1ull)) || (phys & (VM_PAGE_SIZE - 1ull)))
         return -1;
@@ -144,6 +176,9 @@ int vm_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
     return 0;
 }
 
+
+/* vm_aslr_slide -- generate a random page-aligned offset for user-space ASLR.
+ */
 uint64_t vm_aslr_slide(void) {
 #ifdef CONFIG_USER_ASLR
     aslr_state ^= aslr_state << 13;
@@ -158,6 +193,9 @@ uint64_t vm_aslr_slide(void) {
 #endif
 }
 
+
+/* vm_virt_to_phys -- translate a kernel virtual address to physical (software walk).
+ */
 uint64_t vm_virt_to_phys(uint64_t virt) {
     uint32_t pml4_i = (uint32_t)((virt >> 39) & 0x1ffu);
     uint32_t pdpt_i = (uint32_t)((virt >> 30) & 0x1ffu);

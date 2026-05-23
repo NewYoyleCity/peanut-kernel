@@ -1,17 +1,28 @@
+/* syscall.c -- x86-64 syscall dispatcher (MSR-based).
+ *
+ * Sets up MSR_STAR / MSR_LSTAR / MSR_SFMASK for the syscall/sysret
+ * mechanism.  Implements a flat syscall handler supporting file I/O,
+ * process control, timing, networking, and power-management syscalls.
+ */
+
 #include "freelib/kstdio.h"
 #include "freelib/kstdint.h"
 #include "freelib/kpanic.h"
 #include "abi.h"
-#include "config.h"
 #include "storage.h"
 #include "fs/vfs.h"
 #include "freelib/kalloc.h"
 #include "programs/elf.h"
 #include "cpu/sched.h"
 #include "cpu/pit.h"
+#include "config.h"
 
 #ifdef CONFIG_NET_TCP_IP
 #include "drivers/net/net.h"
+#endif
+
+#ifdef CONFIG_ACPI
+#include "drivers/acpi.h"
 #endif
 
 #ifdef CONFIG_NETWORK_SYSCALLS
@@ -52,7 +63,9 @@ static Fd fds[FD_MAX];
 
 static uint64_t last_errno;
 
-static uint64_t rdmsr(uint32_t msr) {
+
+/* rdmsr -- read an x86 model-specific register.
+ */static uint64_t rdmsr(uint32_t msr) {
     uint32_t low;
     uint32_t high;
 
@@ -60,13 +73,18 @@ static uint64_t rdmsr(uint32_t msr) {
     return ((uint64_t)high << 32) | low;
 }
 
-static void wrmsr(uint32_t msr, uint64_t value) {
+
+/* wrmsr -- write an x86 model-specific register.
+ */static void wrmsr(uint32_t msr, uint64_t value) {
     uint32_t low = value & 0xFFFFFFFF;
     uint32_t high = value >> 32;
 
     __asm__ volatile("wrmsr" : : "c"(msr), "a"(low), "d"(high));
 }
 
+
+/* syscall_init -- enable MSR-based syscall/sysret (EFER.SCE, STAR, LSTAR, SFMASK).
+ */
 void syscall_init(void) {
     user_brk_end = (uintptr_t)user_brk_arena;
 
@@ -80,7 +98,9 @@ void syscall_init(void) {
     wrmsr(MSR_SFMASK, RFLAGS_IF);
 }
 
-static uint64_t handle_brk(uintptr_t addr) {
+
+/* handle_brk -- set or query the program break (brk/sbrk).
+ */static uint64_t handle_brk(uintptr_t addr) {
     uintptr_t base = (uintptr_t)user_brk_arena;
     uintptr_t limit = base + USER_BRK_ARENA_BYTES;
 
@@ -95,13 +115,17 @@ static uint64_t handle_brk(uintptr_t addr) {
 }
 
 
-static void kstrcpy(char* d, const char* s, uint32_t cap) {
+
+/* kstrcpy -- bounded string copy (null-terminates).
+ */static void kstrcpy(char* d, const char* s, uint32_t cap) {
     uint32_t i = 0;
     for (; i + 1 < cap && s[i]; i++) d[i] = s[i];
     d[i] = '\0';
 }
 
-static void fs_path_to_fat_name(const char* path, char* out, uint32_t cap) {
+
+/* fs_path_to_fat_name -- convert Unix path to uppercase FAT name.
+ */static void fs_path_to_fat_name(const char* path, char* out, uint32_t cap) {
     uint32_t j = 0;
     uint32_t i = (path && path[0] == '/') ? 1 : 0;
     if (!path || cap == 0)
@@ -113,7 +137,9 @@ static void fs_path_to_fat_name(const char* path, char* out, uint32_t cap) {
     out[j] = '\0';
 }
 
-static void copy_user_cstr(char* dst, const char* user_ptr, uint32_t cap) {
+
+/* copy_user_cstr -- safely copy a string from user-space address.
+ */static void copy_user_cstr(char* dst, const char* user_ptr, uint32_t cap) {
     if (!user_ptr) {
         dst[0] = '\0';
         return;
@@ -128,7 +154,9 @@ static void copy_user_cstr(char* dst, const char* user_ptr, uint32_t cap) {
     dst[cap - 1] = '\0';
 }
 
-static int alloc_fd(void) {
+
+/* alloc_fd -- reserve a file-descriptor slot.
+ */static int alloc_fd(void) {
     for (int i = 0; i < FD_MAX; i++) {
         if (!fds[i].used) {
             fds[i].used = 1;
@@ -144,7 +172,9 @@ static int alloc_fd(void) {
     return -1;
 }
 
-static int read_file_into_mem(const char* path, uint8_t** out, uint32_t* out_sz) {
+
+/* read_file_into_mem -- load a complete file from root volume into heap.
+ */static int read_file_into_mem(const char* path, uint8_t** out, uint32_t* out_sz) {
     PeanutVolume* vol = storage_get_root_volume();
     if (!vol) return -1;
     if (vfs_is_pseudo_path(path)) {
@@ -211,12 +241,18 @@ static int read_file_into_mem(const char* path, uint8_t** out, uint32_t* out_sz)
     return 0;
 }
 
-static int sys_stat_path(const char* path, void* stat_buf) {
+
+/* sys_stat_path -- stub; stat is not yet implemented.
+ */static int sys_stat_path(const char* path, void* stat_buf) {
     (void)path;
     (void)stat_buf;
     return -1;
 }
 
+
+/* syscall_handler -- central syscall dispatch.  Handles file I/O, process control,
+ * timing, networking, and power-management requests.
+ */
 uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t arg3,
                          uint64_t user_rip, uint64_t user_rsp, uint64_t user_flags) {
     last_errno = 0;
@@ -622,6 +658,18 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
             last_errno = 27;
             return (uint64_t)-1;
         }
+#endif
+
+#ifdef CONFIG_ACPI
+        case SYS_POWEROFF:
+            kprint("System poweroff requested\n");
+            acpi_poweroff();
+            return 0;
+
+        case SYS_REBOOT2:
+            kprint("System reboot requested\n");
+            acpi_reboot();
+            return 0;
 #endif
 
         default:

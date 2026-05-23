@@ -1,3 +1,10 @@
+/* elf.c -- ELF64 program loader.
+ *
+ * Loads ELF64 binaries from the root volume, handles shebang lines,
+ * PT_INTERP (dynamic linker), maps PT_LOAD segments into user space
+ * with optional KASLR slide, and performs the final ring-3 transition.
+ */
+
 #include "programs/elf.h"
 #include "freelib/kstdint.h"
 #include "freelib/kstdio.h"
@@ -7,14 +14,18 @@
 #include "cpu/sched.h"
 #include "mm/vm.h"
 
-static void kstrlcpy(char* d, const char* s, size_t cap) {
+
+/* kstrlcpy -- safe bounded string copy.
+ */static void kstrlcpy(char* d, const char* s, size_t cap) {
     size_t i;
     for (i = 0; i + 1 < cap && s[i]; i++)
         d[i] = s[i];
     d[i] = '\0';
 }
 
-static int parse_shebang_line(const uint8_t* data, uint32_t len, char* interp, uint32_t interp_sz,
+
+/* parse_shebang_line -- extract interpreter and optional argument from #! line.
+ */static int parse_shebang_line(const uint8_t* data, uint32_t len, char* interp, uint32_t interp_sz,
                               char* arg, uint32_t arg_sz) {
     if (len < 2 || data[0] != '#' || data[1] != '!')
         return -1;
@@ -44,7 +55,9 @@ static int parse_shebang_line(const uint8_t* data, uint32_t len, char* interp, u
     return 0;
 }
 
-static void fat_path_from_fs(const char* fs_path, char* out, uint32_t out_sz) {
+
+/* fat_path_from_fs -- convert path to uppercase FAT path.
+ */static void fat_path_from_fs(const char* fs_path, char* out, uint32_t out_sz) {
     uint32_t j = 0;
     if (fs_path[0] == '/') {
         uint32_t i = 1;
@@ -62,7 +75,9 @@ static void fat_path_from_fs(const char* fs_path, char* out, uint32_t out_sz) {
     out[j] = '\0';
 }
 
-static int elf_load_and_run_inner(PeanutVolume* vol, const char* path, const char* argv0,
+
+/* elf_load_and_run_inner -- read ELF, parse headers, load segments, and jump to ring 3.
+ */static int elf_load_and_run_inner(PeanutVolume* vol, const char* path, const char* argv0,
                                   const char* argv1_opt);
 
 int elf_load_and_run(PeanutVolume* vol, const char* path) {
@@ -252,7 +267,9 @@ static int elf_load_and_run_inner(PeanutVolume* vol, const char* path, const cha
     return -1;
 }
 
-void jump_to_ring3(uint64_t entry_point, const char* argv0, const char* argv1_opt) {
+
+/* jump_to_ring3 -- set up user stack with argv, create process, execute IRETQ to ring 3.
+ */void jump_to_ring3(uint64_t entry_point, const char* argv0, const char* argv1_opt) {
     static uint8_t test_user_stack[4096];
     uintptr_t top = (uintptr_t)(test_user_stack + sizeof(test_user_stack));
     top &= ~15ull;

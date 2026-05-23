@@ -1,3 +1,10 @@
+; decompress_entry.asm -- Kernel decompressor entry.
+;
+; A small 32-bit boot stub that checks for CPUID + long mode,
+; sets up page tables, enters long mode, and calls the C
+; decompress_kernel() function to decompress the kernel payload
+; from 0x4001000 to 16 MB before jumping to it.
+;
 ; decompress_entry.asm - Kernel decompressor entry point
 ; Sets up long mode, decompresses the kernel payload appended at
 ; a fixed address (0x400000 + 0x1000), and jumps to the result at 16MB.

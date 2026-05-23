@@ -1,3 +1,9 @@
+/* storage_tests.c -- Post-boot storage subsystem self-tests.
+ *
+ * Validates block reads, MBR scanning, FHS directory existence, and
+ * optionally performs write/read-back tests on FAT32/exFAT/ext volumes.
+ */
+
 #include "tests/storage_tests.h"
 #include "freelib/kpanic.h"
 #include "freelib/kstdio.h"
@@ -7,7 +13,9 @@
 #include "drivers/block/ide.h"
 #include "drivers/block/ahci.h"
 
-static int memeq(const uint8_t* a, const uint8_t* b, uint32_t len) {
+
+/* memeq -- compare two memory regions for equality.
+ */static int memeq(const uint8_t* a, const uint8_t* b, uint32_t len) {
     for (uint32_t i = 0; i < len; i++) {
         if (a[i] != b[i])
             return 0;
@@ -15,24 +23,32 @@ static int memeq(const uint8_t* a, const uint8_t* b, uint32_t len) {
     return 1;
 }
 
-static void expect(int condition, const char* message) {
+
+/* expect -- assert condition; panic on failure with message.
+ */static void expect(int condition, const char* message) {
     if (!condition)
         kpanic(message);
 }
 
-static void expect_root_dir_fat32(Fat32Volume* volume, const char* name) {
+
+/* expect_root_dir_fat32 -- assert a FAT32 root directory exists.
+ */static void expect_root_dir_fat32(Fat32Volume* volume, const char* name) {
     Fat32DirEntry entry;
     expect(fat32_find_root(volume, name, &entry) == 0, "storage test: missing FHS directory");
     expect((entry.attributes & FAT32_ATTR_DIRECTORY) != 0, "storage test: FHS entry is not a directory");
 }
 
-static void expect_root_dir_exfat(ExfatVolume* volume, const char* name) {
+
+/* expect_root_dir_exfat -- assert an exFAT root directory exists.
+ */static void expect_root_dir_exfat(ExfatVolume* volume, const char* name) {
     ExfatDirEntry entry;
     expect(exfat_find_root(volume, name, &entry) == 0, "storage test: missing FHS directory");
     expect((entry.attributes & EXFAT_ATTR_DIRECTORY) != 0, "storage test: FHS entry is not a directory");
 }
 
-static void expect_root_dir_ext(ExtVolume* volume, const char* name) {
+
+/* expect_root_dir_ext -- assert a ext root directory exists.
+ */static void expect_root_dir_ext(ExtVolume* volume, const char* name) {
     char p[16];
     uint32_t i = 0;
     p[i++] = '/';

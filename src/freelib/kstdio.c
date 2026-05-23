@@ -1,3 +1,10 @@
+/* kstdio.c -- Kernel I/O: serial, VGA text-mode, and framebuffer output.
+ *
+ * Provides kputc/kprint/kprint_hex/kprint_int for debug output.
+ * Supports three backends: serial (COM1), VGA text-mode (0xB8000),
+ * and the framebuffer console (fb_putc).
+ */
+
 #include "kstdio.h"
 #include "config.h"
 #include "drivers/bus/io.h"

@@ -1,3 +1,10 @@
+; irq.asm -- Interrupt service routine stubs.
+;
+; Provides the timer IRQ handler (irq_timer) that saves/restores
+; all registers and delegates to irq_timer_dispatch(), enabling
+; context switching.  Also provides exception stubs for #UD, #GP,
+; and #PF that call cpu_exception_handler().
+;
 section .text
 [bits 64]
 global irq_timer

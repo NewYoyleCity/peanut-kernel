@@ -1,3 +1,9 @@
+/* pci.h -- PCI configuration access types and prototypes.
+ *
+ * Defines the PciAddress structure and declares the public API
+ * for reading/writing PCI config space and finding devices.
+ */
+
 #ifndef PCI_H
 #define PCI_H
 

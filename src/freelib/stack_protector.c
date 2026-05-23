@@ -5,6 +5,8 @@
 #ifdef CONFIG_STACK_CANARY
 uintptr_t __stack_chk_guard = 0xDEADBEEFCAFEBABEull;
 
+/* __stack_chk_fail -- panic on detected stack buffer overflow.
+ */
 __attribute__((used))
 void __stack_chk_fail(void) {
     kpanic("[Peanut kernel - panic - Stack smashing detected!]");

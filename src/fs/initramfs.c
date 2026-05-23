@@ -1,23 +1,36 @@
+/* initramfs.c -- Embedded initramfs (cpio newc format) finder.
+ *
+ * Scans the _initramfs_start .. _initramfs_end region for a cpio
+ * archive, locates files by path (case-insensitive), and returns
+ * pointers to their data.
+ */
+
 #include "fs/initramfs.h"
 #include "freelib/kstdio.h"
 
 extern uint8_t _initramfs_start[];
 extern uint8_t _initramfs_end[];
 
-static uint32_t kslen(const char* s) {
+
+/* kslen -- return length of a null-terminated string.
+ */static uint32_t kslen(const char* s) {
     uint32_t n = 0;
     while (s[n])
         n++;
     return n;
 }
 
-static int cpio_is_newc(const uint8_t* p, uint32_t remain) {
+
+/* cpio_is_newc -- check for "070701" magic at start of a cpio entry.
+ */static int cpio_is_newc(const uint8_t* p, uint32_t remain) {
     if (remain < 6)
         return 0;
     return p[0] == '0' && p[1] == '7' && p[2] == '0' && p[3] == '7' && p[4] == '0' && p[5] == '1';
 }
 
-static uint32_t cpio_hex(const uint8_t* f, uint32_t n) {
+
+/* cpio_hex -- parse an ASCII-hex field from a cpio header.
+ */static uint32_t cpio_hex(const uint8_t* f, uint32_t n) {
     uint32_t v = 0;
     for (uint32_t i = 0; i < n; i++) {
         uint8_t c = f[i];
@@ -35,7 +48,9 @@ static uint32_t cpio_hex(const uint8_t* f, uint32_t n) {
     return v;
 }
 
-static int name_matches_exec_path(const char* want, const char* cpio_name, uint32_t namesz) {
+
+/* name_matches_exec_path -- case-insensitive path match against a cpio filename.
+ */static int name_matches_exec_path(const char* want, const char* cpio_name, uint32_t namesz) {
     if (namesz < 2)
         return 0;
     if (cpio_name[namesz - 1] != '\0')
@@ -60,7 +75,9 @@ static int name_matches_exec_path(const char* want, const char* cpio_name, uint3
     return 1;
 }
 
-static int is_trailer(const char* name, uint32_t namesz) {
+
+/* is_trailer -- check for the cpio "TRAILER!!!" end marker.
+ */static int is_trailer(const char* name, uint32_t namesz) {
     const char* t = "TRAILER!!!";
     uint32_t tl = kslen(t) + 1;
     if (namesz != tl)

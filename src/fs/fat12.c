@@ -1,3 +1,10 @@
+/* fat12.c -- FAT12 floppy filesystem driver.
+ *
+ * Lightweight FAT12 implementation designed for floppy disks.
+ * Reads the BPB, navigates the root directory, and reads files
+ * through cluster chains.
+ */
+
 #include "fat12.h"
 #include "freelib/kstdio.h"
 #include "freelib/kalloc.h"
@@ -8,29 +15,41 @@ static fat12_bpb_t *fat12_bpb = NULL;
 #define FAT12_ATTR_DIRECTORY 0x10
 #define FAT12_EOC_MARK 0x0FF8
 
-static uint16_t fat12_root_dir_sectors(void) {
+
+/* fat12_root_dir_sectors -- compute root directory size in sectors.
+ */static uint16_t fat12_root_dir_sectors(void) {
     return (uint16_t)(((uint32_t)fat12_bpb->root_entries * 32u + fat12_bpb->bytes_per_sector - 1u) /
         fat12_bpb->bytes_per_sector);
 }
 
-static uint32_t fat12_root_lba(void) {
+
+/* fat12_root_lba -- compute LBA of the FAT12 root directory.
+ */static uint32_t fat12_root_lba(void) {
     return fat12_bpb->reserved_sectors + (uint32_t)fat12_bpb->num_fats * fat12_bpb->sectors_per_fat_small;
 }
 
-static uint32_t fat12_data_lba(void) {
+
+/* fat12_data_lba -- compute LBA of the FAT12 data region.
+ */static uint32_t fat12_data_lba(void) {
     return fat12_root_lba() + fat12_root_dir_sectors();
 }
 
-static uint32_t fat12_cluster_lba(uint16_t cluster) {
+
+/* fat12_cluster_lba -- compute LBA of a FAT12 cluster.
+ */static uint32_t fat12_cluster_lba(uint16_t cluster) {
     return fat12_data_lba() + (uint32_t)(cluster - 2u) * fat12_bpb->sectors_per_cluster;
 }
 
-static char upper_ascii(char c) {
+
+/* upper_ascii -- convert a-z to A-Z.
+ */static char upper_ascii(char c) {
     if (c >= 'a' && c <= 'z') return (char)(c - ('a' - 'A'));
     return c;
 }
 
-static int fat12_make_name(const char *path, char out[11]) {
+
+/* fat12_make_name -- convert a path to an 8.3 DOS filename.
+ */static int fat12_make_name(const char *path, char out[11]) {
     uint32_t i = 0;
     uint32_t base = 0;
     uint32_t ext = 8;
@@ -59,7 +78,9 @@ static int fat12_make_name(const char *path, char out[11]) {
     return base == 0 ? -1 : 0;
 }
 
-static int fat12_name_matches(const fat12_dirent_t *entry, const char name[11]) {
+
+/* fat12_name_matches -- compare a directory entry against an 8.3 name.
+ */static int fat12_name_matches(const fat12_dirent_t *entry, const char name[11]) {
     for (uint32_t i = 0; i < 8; i++) {
         if (entry->name[i] != name[i]) return 0;
     }
@@ -69,7 +90,9 @@ static int fat12_name_matches(const fat12_dirent_t *entry, const char name[11]) 
     return 1;
 }
 
-static uint16_t fat12_next_cluster(uint16_t cluster) {
+
+/* fat12_next_cluster -- follow FAT12 cluster chain.
+ */static uint16_t fat12_next_cluster(uint16_t cluster) {
     uint8_t sector[512];
     uint32_t fat_offset = cluster + (cluster / 2u);
     uint32_t sector_lba = fat12_bpb->reserved_sectors + fat_offset / fat12_bpb->bytes_per_sector;
@@ -90,7 +113,9 @@ static uint16_t fat12_next_cluster(uint16_t cluster) {
     return value;
 }
 
-static int fat12_find_root(const char *path, fat12_dirent_t *out) {
+
+/* fat12_find_root -- find a file in the FAT12 root directory.
+ */static int fat12_find_root(const char *path, fat12_dirent_t *out) {
     char wanted[11];
     uint8_t sector[512];
     uint32_t root_lba;

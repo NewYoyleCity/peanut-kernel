@@ -1,3 +1,10 @@
+/* fb.c -- Framebuffer console driver.
+ *
+ * Initialises a linear framebuffer either via VBE (Bochs/VirtualBox)
+ * or from a Multiboot2 framebuffer tag.  Renders text using a PSF font
+ * with scrolling support.
+ */
+
 #include "drivers/video/fb.h"
 #include "drivers/video/psf_font.h"
 #include "drivers/bus/io.h"
@@ -42,7 +49,9 @@ static uint32_t cursor_x;
 static uint32_t cursor_y;
 static PsfFont font;
 
-static void vbe_write(uint16_t index, uint16_t value) {
+
+/* vbe_write -- write a VBE index/data register pair.
+ */static void vbe_write(uint16_t index, uint16_t value) {
     outw(VBE_DISPI_IOPORT_INDEX, index);
     outw(VBE_DISPI_IOPORT_DATA, value);
 }
@@ -63,7 +72,9 @@ int fb_init_direct(void) {
     return 0;
 }
 
-static uint32_t align8(uint32_t v) {
+
+/* align8 -- round up to next multiple of 8.
+ */static uint32_t align8(uint32_t v) {
     return (v + 7u) & ~7u;
 }
 
@@ -96,7 +107,9 @@ int fb_ready(void) {
     return fb != 0;
 }
 
-static void scroll_if_needed(void) {
+
+/* scroll_if_needed -- scroll the framebuffer up one row if cursor is past bottom.
+ */static void scroll_if_needed(void) {
     uint32_t glyph_h = font.glyph_height;
     uint32_t rows = height / glyph_h;
     if (cursor_y < rows)

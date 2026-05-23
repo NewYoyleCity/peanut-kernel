@@ -1,3 +1,10 @@
+/* nvme.c -- NVMe solid-state disk driver.
+ *
+ * Initialises an NVMe controller via PCI BAR0, creates admin and I/O
+ * submission/completion queues, identifies the first namespace, and
+ * exposes it as a BlockDevice.
+ */
+
 #include "drivers/block/nvme.h"
 #include "drivers/bus/pci.h"
 #include "drivers/bus/io.h"
@@ -122,12 +129,16 @@ typedef struct {
 
 static NvmeData nvme_data;
 
-static void nvme_doorbell(NvmeData* d, uint32_t qid, uint32_t val, int cq) {
+
+/* nvme_doorbell -- ring a submission/completion queue doorbell.
+ */static void nvme_doorbell(NvmeData* d, uint32_t qid, uint32_t val, int cq) {
     volatile uint32_t* db = (volatile uint32_t*)((uint8_t*)d->regs + 0x1000 + (qid * 8u) + (cq ? 4u : 0u));
     *db = val;
 }
 
-static int nvme_submit_cmd(NvmeData* d, NvmeCmd* cmd) {
+
+/* nvme_submit_cmd -- submit admin command and wait for completion.
+ */static int nvme_submit_cmd(NvmeData* d, NvmeCmd* cmd) {
     uint32_t i = d->sq_tail % NVME_ADMIN_QUEUE_SIZE;
     d->sq[i] = *cmd;
     d->sq_tail++;

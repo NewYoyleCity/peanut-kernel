@@ -1,3 +1,10 @@
+/* kalloc.c -- Heap allocator (fallback for large allocations).
+ *
+ * A simple bump+free-list allocator.  Small allocations (<=1024 bytes)
+ * are first tried by the slab allocator; large allocations use block
+ * headers embedded in the heap region after _kernel_end.
+ */
+
 #include "kalloc.h"
 #include "freelib/slab.h"
 
@@ -11,7 +18,9 @@ typedef struct BlockHeader {
 
 static BlockHeader* heap_start = NULL;
 
-void kalloc_init() {
+
+/* kalloc_init -- initialise the heap allocator (sets the first block header at _kernel_end).
+ */void kalloc_init() {
     if (heap_start) return;
 
     uintptr_t heap_addr = ((uintptr_t)&_kernel_end + 15) & ~((uintptr_t)15);

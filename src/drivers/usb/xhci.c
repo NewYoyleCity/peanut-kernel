@@ -1,3 +1,10 @@
+/* xhci.c -- xHCI (USB 3.0) host controller driver.
+ *
+ * Initialises an xHCI controller, enumerates root ports, assigns
+ * device slots, and manages endpoint rings for control and interrupt
+ * transfers.  Supports keyboard and mouse HID devices.
+ */
+
 #include "drivers/usb/xhci.h"
 #include "drivers/bus/pci.h"
 #include "freelib/kstdio.h"
@@ -50,20 +57,28 @@ uint32_t xhci_device_count_;
 volatile uint32_t* xhci_db_global;
 volatile uint32_t* xhci_ir_global;
 
-static uint32_t mmio_read32(volatile uint32_t* r) {
+
+/* mmio_read32 -- read a 32-bit MMIO register.
+ */static uint32_t mmio_read32(volatile uint32_t* r) {
     return *r;
 }
 
-static void mmio_write32(volatile uint32_t* r, uint32_t v) {
+
+/* mmio_write32 -- write a 32-bit MMIO register.
+ */static void mmio_write32(volatile uint32_t* r, uint32_t v) {
     *r = v;
 }
 
-static void mmio_write64(volatile uint32_t* r, uint64_t v) {
+
+/* mmio_write64 -- write a 64-bit MMIO register as two 32-bit writes.
+ */static void mmio_write64(volatile uint32_t* r, uint64_t v) {
     r[0] = (uint32_t)v;
     r[1] = (uint32_t)(v >> 32);
 }
 
-static uint32_t trb_type(uint32_t control) {
+
+/* trb_type -- extract the TRB type from a control dword.
+ */static uint32_t trb_type(uint32_t control) {
     return (control >> 10) & 0x3Fu;
 }
 
@@ -77,7 +92,9 @@ void* xhci_alloc_pages(uint32_t pages) {
     return first;
 }
 
-static uint32_t xhci_page_count(uint32_t bytes) {
+
+/* xhci_page_count -- compute number of 4 KB pages needed for a byte count.
+ */static uint32_t xhci_page_count(uint32_t bytes) {
     return (bytes + VM_PAGE_SIZE - 1u) / VM_PAGE_SIZE;
 }
 
@@ -87,15 +104,21 @@ void xhci_zero(void* ptr, uint32_t bytes) {
         p[i] = 0;
 }
 
-static void xhci_ctx_write32(uint8_t* ctx, uint32_t offset, uint32_t value) {
+
+/* xhci_ctx_write32 -- write 32-bit value into an xHCI context.
+ */static void xhci_ctx_write32(uint8_t* ctx, uint32_t offset, uint32_t value) {
     *(uint32_t*)(ctx + offset) = value;
 }
 
-static void xhci_ctx_write64(uint8_t* ctx, uint32_t offset, uint64_t value) {
+
+/* xhci_ctx_write64 -- write 64-bit value into an xHCI context.
+ */static void xhci_ctx_write64(uint8_t* ctx, uint32_t offset, uint64_t value) {
     *(uint64_t*)(ctx + offset) = value;
 }
 
-static const char* xhci_port_speed_name(uint32_t portsc) {
+
+/* xhci_port_speed_name -- return string name for a USB port speed.
+ */static const char* xhci_port_speed_name(uint32_t portsc) {
     uint32_t spd = (portsc >> 10) & 0xFu;
     switch (spd) {
         case 1: return "full";
@@ -107,7 +130,9 @@ static const char* xhci_port_speed_name(uint32_t portsc) {
     }
 }
 
-static void xhci_print_protocol_caps(uint8_t* base, uint32_t hccparams) {
+
+/* xhci_print_protocol_caps -- print USB protocol capability entries.
+ */static void xhci_print_protocol_caps(uint8_t* base, uint32_t hccparams) {
     uint32_t xecp = (hccparams >> 16) & 0xFFFFu;
     if (xecp == 0) {
         kprint("  xHCI: no extended capability list\n");
@@ -149,7 +174,9 @@ static void xhci_print_protocol_caps(uint8_t* base, uint32_t hccparams) {
     }
 }
 
-static int xhci_wait_cmd(volatile uint32_t* db, volatile uint32_t* ir, uint64_t expected_trb, uint32_t* slot_id) {
+
+/* xhci_wait_cmd -- wait for a command completion event on the event ring.
+ */static int xhci_wait_cmd(volatile uint32_t* db, volatile uint32_t* ir, uint64_t expected_trb, uint32_t* slot_id) {
     *slot_id = 0;
     db[0] = 0;
     for (uint32_t spin = 0; spin < 4000000u; spin++) {
@@ -171,7 +198,9 @@ static int xhci_wait_cmd(volatile uint32_t* db, volatile uint32_t* ir, uint64_t 
     return -1;
 }
 
-static int xhci_cmd(volatile uint32_t* db, volatile uint32_t* ir, uint64_t parameter, uint32_t status, uint32_t control, uint32_t* slot_id) {
+
+/* xhci_cmd -- enqueue a command TRB and wait for its completion.
+ */static int xhci_cmd(volatile uint32_t* db, volatile uint32_t* ir, uint64_t parameter, uint32_t status, uint32_t control, uint32_t* slot_id) {
     XhciTrb* trb = &xhci_cmd_ring[cmd_index];
     trb->parameter = parameter;
     trb->status = status;

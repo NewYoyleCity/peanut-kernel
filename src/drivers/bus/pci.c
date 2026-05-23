@@ -1,10 +1,19 @@
+/* pci.c -- PCI configuration space access.
+ *
+ * Provides low-level read/write to PCI config space via I/O ports
+ * 0xCF8/0xCFC, and higher-level helpers to find devices by class,
+ * vendor/device ID, and to read BAR registers.
+ */
+
 #include "drivers/bus/pci.h"
 #include "drivers/bus/io.h"
 
 #define PCI_CONFIG_ADDRESS 0xCF8
 #define PCI_CONFIG_DATA    0xCFC
 
-static uint32_t pci_address(PciAddress addr, uint8_t offset) {
+
+/* pci_address -- construct the CONFIG_ADDRESS port value.
+ */static uint32_t pci_address(PciAddress addr, uint8_t offset) {
     return 0x80000000u |
         ((uint32_t)addr.bus << 16) |
         ((uint32_t)addr.slot << 11) |

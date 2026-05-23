@@ -1,3 +1,10 @@
+/* slab.c -- Slab allocator for small objects (32-1024 bytes).
+ *
+ * Pre-allocates 6 size classes (32, 64, 128, 256, 512, 1024 bytes).
+ * Each class draws pages from vm_alloc_page() and splits them into
+ * fixed-size slots with a magic-number header for free-list tracking.
+ */
+
 #include "freelib/slab.h"
 #include "mm/vm.h"
 
@@ -21,7 +28,9 @@ void slab_init(void) {
         free_lists[i] = 0;
 }
 
-static int class_for(size_t size) {
+
+/* class_for -- determine the slab class index for a given allocation size.
+ */static int class_for(size_t size) {
     size_t need = size + sizeof(SlabHeader);
     for (uint32_t i = 0; i < SLAB_CLASSES; i++) {
         if (need <= class_sizes[i])
@@ -30,7 +39,9 @@ static int class_for(size_t size) {
     return -1;
 }
 
-static int refill(uint32_t ci) {
+
+/* refill -- allocate a new page and split it into slots for a slab class.
+ */static int refill(uint32_t ci) {
     uint8_t* page = (uint8_t*)vm_alloc_page();
     if (!page)
         return -1;

@@ -1,3 +1,9 @@
+/* init_sample.c -- Example init program for user space.
+ *
+ * A minimal init that prints a message via syscall(SYS_WRITE) and then
+ * loops forever calling syscall(SYS_YIELD).  Intended as a reference.
+ */
+
 void _start() {
     const char* msg = "Peanut init started!\n";
 
