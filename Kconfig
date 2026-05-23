@@ -240,6 +240,19 @@ config INPUT_PS2
 
 endmenu
 
+menu "Kernel Hacking"
+
+config MANTAINER_MENTAL_STABILITY
+    bool "Maintainer mental stability"
+    default n
+    help
+      Enables a brief (10-second) delay at boot as a mindfulness pause for
+      the kernel maintainer. An 8KB pointerless stack frame is also allocated
+      to assert that large automatic variables are harmless. You are not
+      expected to understand this.
+
+endmenu
+
 menu "Video drivers"
 
 config VIDEO_HDMI

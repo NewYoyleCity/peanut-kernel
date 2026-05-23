@@ -96,20 +96,24 @@ _start:
     add eax, 0x200000
     loop .pt_loop2
 
-    ; Enable PAE
+    ; Enable PAE + SMEP + SMAP
     mov eax, cr4
-    or eax, 1 << 5
+    or eax, 1 << 5       ; PAE
+    or eax, 1 << 20      ; SMEP
+    or eax, 1 << 21      ; SMAP
     mov cr4, eax
 
-    ; Enable long mode
+    ; Enable long mode + NXE
     mov ecx, 0xC0000080
     rdmsr
-    or eax, 1 << 8
+    or eax, 1 << 8       ; LME
+    or eax, 1 << 11      ; NXE
     wrmsr
 
-    ; Enable paging
+    ; Enable paging + WP
     mov eax, cr0
-    or eax, 0x80000001
+    or eax, 0x80000001   ; PG + PE
+    or eax, 1 << 16      ; WP
     mov cr0, eax
 
     ; Load GDT and jump to 64-bit

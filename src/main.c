@@ -81,13 +81,26 @@ int usb_kbd_init(void);
 void gdt_init_for_user();
 void tss_init();
 void irq_timer(void);
-
 void kmain(uint64_t multiboot_info, uint32_t kaslr_offset) {
     (void)kaslr_offset;
     if (fb_init_direct() != 0)
         fb_init_from_multiboot(multiboot_info);
     kclear();
     kprint_timed("Peanut Kernel booting...\n");
+
+#ifdef CONFIG_MANTAINER_MENTAL_STABILITY
+    kprint_timed("  [Maintainer mental stability engaged — pausing 10 s]\n");
+    {
+        volatile uint8_t pointless_stack[8192];
+        for (uint32_t di = 0; di < 8192; di++) pointless_stack[di] = (uint8_t)di;
+        for (volatile uint32_t di = 0; di < 500000000; di++) {
+            __asm__ volatile("pause");
+            volatile uint8_t sink_ = pointless_stack[di & 8191];
+            (void)sink_;
+        }
+    }
+    kprint_timed("  [Stability pause complete — resuming boot]\n");
+#endif
 
     vm_init();
     slab_init();

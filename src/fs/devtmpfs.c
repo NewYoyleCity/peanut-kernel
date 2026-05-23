@@ -9,6 +9,7 @@
 
 #ifdef CONFIG_USB_XHCI
 int usb_kbd_poll_char(char* out);
+int usb_mouse_poll_packet(uint8_t packet[4]);
 #endif
 
 
@@ -110,13 +111,21 @@ int devtmpfs_pread(const char* path, uint32_t off, uint8_t* buf, uint32_t len, u
     if (streq(path, "/dev/mouse")) {
         uint32_t got = 0;
         while (got + 3 <= len) {
-            uint8_t packet[3];
-            if (!ps2_poll_mouse_packet(packet))
+            uint8_t packet[4];
+            int have = ps2_poll_mouse_packet(packet);
+#ifdef CONFIG_USB_XHCI
+            if (!have)
+                have = (usb_mouse_poll_packet(packet) == 0) ? 1 : 0;
+#endif
+            if (!have)
                 break;
             buf[got++] = packet[0];
             buf[got++] = packet[1];
             buf[got++] = packet[2];
             entropy_mix(((uint64_t)packet[0] << 16) | ((uint64_t)packet[1] << 8) | packet[2]);
+            if (got + 3 <= len && packet[3]) {
+                buf[got++] = packet[3];
+            }
         }
         *out = got;
         return 0;

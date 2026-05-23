@@ -5,6 +5,7 @@
 #include "freelib/kpanic.h"
 #include "abi.h"
 #include "cpu/sched.h"
+#include "mm/vm.h"
 
 static void kstrlcpy(char* d, const char* s, size_t cap) {
     size_t i;
@@ -217,9 +218,13 @@ static int elf_load_and_run_inner(PeanutVolume* vol, const char* path, const cha
         return elf_load_and_run_inner(vol, interp_path_fat, interp_path_fat, path);
     }
     
-    // Load PT_LOAD segments
+    // Map user-accessible pages, then load segments
     for (int i = 0; i < header->e_phnum; i++) {
         if (phdr[i].p_type == PT_LOAD) {
+            if (vm_map_user_pages(phdr[i].p_vaddr, phdr[i].p_memsz, 0) != 0) {
+                kfree(elf_buffer);
+                return -1;
+            }
             uint8_t* dest = (uint8_t*)phdr[i].p_vaddr;
             uint8_t* src = elf_buffer + phdr[i].p_offset;
 

@@ -15,6 +15,7 @@ void vm_free_page(void* page);
 uint64_t vm_kernel_cr3(void);
 int vm_map_identity_2m(uint64_t start, uint64_t bytes, uint64_t flags);
 int vm_map_page(uint64_t virt, uint64_t phys, uint64_t flags);
+int vm_map_user_pages(uint64_t vaddr, uint64_t size, uint64_t extra_flags);
 uint64_t vm_virt_to_phys(uint64_t virt);
 
 #endif

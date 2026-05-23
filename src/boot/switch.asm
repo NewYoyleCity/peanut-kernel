@@ -89,7 +89,9 @@ setup_page_tables:
 
 enable_paging:
     mov eax, cr4
-    or eax, 1 << 5
+    or eax, 1 << 5       ; PAE
+    or eax, 1 << 20      ; SMEP — no execute from user pages in ring 0
+    or eax, 1 << 21      ; SMAP — no access to user pages in ring 0 (unless AC=1)
     mov cr4, eax
 
     mov eax, pml4
@@ -97,11 +99,13 @@ enable_paging:
 
     mov ecx, 0xC0000080
     rdmsr
-    or eax, 1 << 8
+    or eax, 1 << 8       ; LME (long mode enable)
+    or eax, 1 << 11      ; NXE — no-execute page table bit enabled
     wrmsr
 
     mov eax, cr0
-    or eax, 1 << 31
+    or eax, 1 << 31      ; PG (paging)
+    or eax, 1 << 16      ; WP — supervisor writes respect R/O pages
     mov cr0, eax
     ret
 

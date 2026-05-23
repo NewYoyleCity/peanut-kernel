@@ -91,6 +91,7 @@ ifeq ($(CONFIG_AUDIO_HDA),y)
 endif
 ifeq ($(CONFIG_USB_XHCI),y)
   SRCS_C += src/drivers/usb/xhci.c
+  SRCS_C += src/drivers/usb/xhci_hid.c
   SRCS_C += src/drivers/usb/usb_hid.cpp
 endif
 ifeq ($(CONFIG_INPUT_PS2),y)
@@ -325,13 +326,15 @@ run: iso disk.img
 	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
 	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
 	-device qemu-xhci \
-	-device usb-kbd
+	-device usb-kbd \
+	-device usb-mouse
 
 run-serial: iso disk.img
 	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
 	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
 	-device qemu-xhci \
 	-device usb-kbd \
+	-device usb-mouse \
 	-serial stdio
 
 run-nvme: iso disk.img
@@ -340,7 +343,8 @@ run-nvme: iso disk.img
 	-drive file=nvme-disk.img,format=raw,if=none,id=nvme0 \
 	-device nvme,serial=deadbeef,drive=nvme0 \
 	-device qemu-xhci \
-	-device usb-kbd
+	-device usb-kbd \
+	-device usb-mouse
 
 run-net: iso disk.img
 	qemu-system-x86_64 -boot d -cdrom build/peanut.iso \
@@ -349,13 +353,15 @@ run-net: iso disk.img
 	-netdev user,id=net0 \
 	-device qemu-xhci \
 	-device usb-kbd \
+	-device usb-mouse \
 	-serial stdio
 
 run-uefi: iso uefi-bundle
 	qemu-system-x86_64 -bios /usr/share/ovmf/OVMF.fd -boot d -cdrom build/peanut.iso \
 	-drive file=disk.img,format=raw,if=ide,index=0,media=disk \
 	-device qemu-xhci \
-	-device usb-kbd
+	-device usb-kbd \
+	-device usb-mouse
 
 nvme-disk.img:
 	@printf "  DISK     Generating NVMe disk image\n"

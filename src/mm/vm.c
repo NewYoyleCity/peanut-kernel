@@ -25,10 +25,37 @@ static uint64_t align_up(uint64_t v, uint64_t a) {
     return (v + a - 1ull) & ~(a - 1ull);
 }
 
+static int vm_split_2m(uint64_t addr) {
+    if (addr & 0x1FFFFFull) return -1;
+    uint32_t pdpt_i = (uint32_t)((addr >> 30) & 0x1ffu);
+    uint32_t pd_i = (uint32_t)((addr >> 21) & 0x1ffu);
+    if (pdpt_i >= 4) return -1;
+    uint64_t pde = kernel_pd[pdpt_i][pd_i];
+    if (!(pde & VM_FLAG_HUGE)) return 0;
+    PageTable* pt = (PageTable*)vm_alloc_page();
+    uint64_t base = pde & ~0x1FFFFFull;
+    uint64_t flags_4k = pde & 0x1FFull;
+    for (uint32_t i = 0; i < 512; i++)
+        (*pt)[i] = (base + (uint64_t)i * VM_PAGE_SIZE) | (flags_4k & ~VM_FLAG_HUGE);
+    kernel_pd[pdpt_i][pd_i] = (uint64_t)pt | (flags_4k & ~VM_FLAG_HUGE);
+    return 0;
+}
+
+int vm_map_user_pages(uint64_t vaddr, uint64_t size, uint64_t extra_flags) {
+    uint64_t aligned_start = vaddr & ~(VM_PAGE_SIZE - 1ull);
+    uint64_t aligned_end = (vaddr + size + VM_PAGE_SIZE - 1ull) & ~(VM_PAGE_SIZE - 1ull);
+    for (uint64_t addr = aligned_start; addr < aligned_end; addr += VM_PAGE_SIZE) {
+        if (vm_split_2m(addr) != 0) return -1;
+        if (vm_map_page(addr, addr, VM_FLAG_PRESENT | VM_FLAG_WRITE | VM_FLAG_USER | extra_flags) != 0)
+            return -1;
+    }
+    return 0;
+}
+
 void vm_init(void) {
     page_bump = (uint8_t*)align_up((uint64_t)&_kernel_end, VM_PAGE_SIZE);
     free_page_list = NULL;
-    vm_map_identity_2m(0, VM_BOOT_MAP_BYTES, VM_FLAG_PRESENT | VM_FLAG_WRITE | VM_FLAG_USER);
+    vm_map_identity_2m(0, VM_BOOT_MAP_BYTES, VM_FLAG_PRESENT | VM_FLAG_WRITE);
     __asm__ volatile("mov %0, %%cr3" : : "r"((uint64_t)kernel_pml4) : "memory");
 }
 
@@ -61,6 +88,8 @@ uint64_t vm_kernel_cr3(void) {
 int vm_map_identity_2m(uint64_t start, uint64_t bytes, uint64_t flags) {
     if ((start & 0x1FFFFFull) || (bytes & 0x1FFFFFull))
         return -1;
+    /* Directory entries always allow user-mode walk so that split 4 KB
+       user pages can be reached; leaf huge pages inherit only caller flags. */
     kernel_pml4[0] = (uint64_t)kernel_pdpt | VM_FLAG_PRESENT | VM_FLAG_WRITE | VM_FLAG_USER;
     for (uint32_t i = 0; i < 4; i++)
         kernel_pdpt[i] = (uint64_t)kernel_pd[i] | VM_FLAG_PRESENT | VM_FLAG_WRITE | VM_FLAG_USER;
